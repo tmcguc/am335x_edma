@@ -20,9 +20,6 @@ All development (to date) will be done using the __BeagleboneBlack__ (BBB):
 
 
 ### Referenced literature:
-[AM335x ARM Cortex-A8 Microprocessors][1] - Technical Reference Manual (SPRUH73I, August 2013)
+[AM335x ARM Cortex-A8 Microprocessors - Technical Reference Manual](http://www.ti.com/litv/pdf/spruh73i)
 
-[AM335x EDMA Driver Guide][2]
-
-[1]: http://www.ti.com/litv/pdf/spruh73i									"AM335x ARM Cortex-A8 Microprocessors"
-[2]: http://processors.wiki.ti.com/index.php/AM335x_EDMA_Driver%27s_Guide	"AM335x EDMA Driver Guide"
+[AM335x EDMA Driver Guide](http://processors.wiki.ti.com/index.php/AM335x_EDMA_Driver%27s_Guide)
