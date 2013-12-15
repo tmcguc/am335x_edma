@@ -1,6 +1,8 @@
 am335x_edma
 -----------
 
+**DEVELOPMENT BRANCH**
+
 Information and Examples for using the Enhanced Direct Memory Access (EDMA) controllers
 on the TI Beaglebone Black (am335x) ARM CPU
 
