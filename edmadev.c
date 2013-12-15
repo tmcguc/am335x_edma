@@ -6,18 +6,31 @@
  *
 */
 
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+
 #include <linux/dma-mapping.h>
 #include <linux/dmaengine.h>
 #include <linux/omap-dma.h>
 
-static void __exit edma_exit(void)
-{
-	platform_device_unregister(pdev0);
-	if (pdev1)
-		platform_device_unregister(pdev1);
-	platform_driver_unregister(&edma_driver);
+
+static int __init edmadev_init(void) {
+
+	printk("EDMA Dev Init.\n");
+	return 0;
+
 }
-module_exit(edma_exit);
+
+
+static void __exit edmadev_exit(void) {
+
+	printk("EDMA Dev Exit.\n");
+
+}
+
+module_init(edmadev_init);
+module_exit(edmadev_exit);
 
 MODULE_AUTHOR("Andrew Righter <andrew.righter@gmail.com");
 MODULE_DESCRIPTION("EDMA userspace interface");
