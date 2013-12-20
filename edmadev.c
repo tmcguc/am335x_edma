@@ -10,23 +10,23 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 
-#include <linux/dma-mapping.h>
-#include <linux/dmaengine.h>
-#include <linux/omap-dma.h>
-
+#include "include/hw_types.h"			// required for HWREG macro
 
 static int __init edmadev_init(void) {
 
-	printk("EDMA Dev Init.\n");
-	return 0;
+	unsigned int tmpPID;
+	
+	printk("Initializing EDMA Kernel Driver\n");
+	tmpPID = HWREG(0xb6f59000);
+	printk("EDMA3CC PID = %i", tmpPID); 
 
+	return 0;
 }
 
 
 static void __exit edmadev_exit(void) {
 
 	printk("EDMA Dev Exit.\n");
-
 }
 
 module_init(edmadev_init);

@@ -34,7 +34,7 @@
 # my personal modification to install the LINUX KERNEL SOURCE TREE
 # onto the SD CARD mounted at "/media/microsd" because I'm running the
 # Ubuntu OS from my MMC on-board Flash memory and out of space. This requires
-# about 750MB free to install then 575MB once it completes.
+# about 716MB free to install then 572MB once it completes.
 #
 # To use this script: 
 # 
@@ -45,6 +45,8 @@
 # execute script with SUDO
 # ln -s /media/microsd/usr/src/linux-`uname -r` /usr/src/
 # <compile all the damn kernel modules you want>
+#
+# If you need to fix any SYMLINKs use 'ln -sfn foo2 foo' 
 
 DIST=""
 
@@ -56,7 +58,7 @@ MAIN_KVER=$(echo ${KVER} | sed -nE 's/^(([0-9]+\.?)+).*/\1/gp')
 
 DDIR="/media/microsd/$(mktemp -d)"
 
-SDDIR="/media/microsd/"
+SDDIR="/media/microsd"
 
 clean_up () {
 	rm -rf "${DDIR}"
