@@ -18,26 +18,14 @@
 //#include <linux/dmaengine.h>
 //#include <linux/omap-dma.h>
 
-<<<<<<< HEAD
-#include "include/hw_types.h"			// required for HWREG macro
-=======
 #define HELLO_MAJOR 234
 
 static int debug_enable = 0;
 module_param(debug_enable, int, 0);
 MODULE_PARM_DESC(debug_enable, "enable module debug mode.");
->>>>>>> a979c4e38da7d048deace060fa75325aeb0dd47b
 
 struct file_operations hello_fops;
 
-<<<<<<< HEAD
-	unsigned int tmpPID;
-	
-	printk("Initializing EDMA Kernel Driver\n");
-	tmpPID = HWREG(0xb6f59000);
-	printk("EDMA3CC PID = %i", tmpPID); 
-
-=======
 static int hello_open(struct inode *inode, struct file *file) {
 	printk("hello_open: successful\n");
 	return 0;
@@ -45,31 +33,24 @@ static int hello_open(struct inode *inode, struct file *file) {
 
 static int hello_release(struct inode *inode, struct file *file) {
 	printk("hello_release: successful\n");
->>>>>>> a979c4e38da7d048deace060fa75325aeb0dd47b
 	return 0;
 }
 
-static ssize_t hello_read(struct file *file, char *buf, size_t count,
-				loff_t *ptr) {
+static ssize_t hello_read(struct file *file, char *buf, size_t count, loff_t *ptr) {
 	printk("hello_read: returning 0 bytes\n");
 	return 0;
 }
 
-static ssize_t hello_write(struct file *file, const char *buf, size_t count, 
-				loff_t * ppos) {
+static ssize_t hello_write(struct file *file, const char *buf, size_t count, loff_t * ppos) {
 	printk("hello_write: accepting zero bytes\n");
 	return 0;
 }
 
-static int hello_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
-				unsigned long arg) {
-	printk("hello_ioctl: cmd=%1d, arg=%1d\n", cmd, arg);
+static int hello_ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsigned long arg) {
+	printk("hello_ioctl: cmd=%iu, arg=%ld\n", cmd, arg);
 	return 0;
 }
 
-<<<<<<< HEAD
-	printk("EDMA Dev Exit.\n");
-=======
 // -----------------------------------
 
 static int __init hello_init(void) {
@@ -91,21 +72,19 @@ static int __init hello_init(void) {
 
 hello_fail1:
 	return ret;
->>>>>>> a979c4e38da7d048deace060fa75325aeb0dd47b
 }
 
 static void __exit hello_exit(void) {
-
 	printk("*** Exiting EDMADEV Interface ***\n");
 }
 
 struct file_operations hello_fops = {
-	owner:		THIS_MODULE,
-	read:		hello_read,
-	write:		hello_write,
-	ioctl:		hello_ioctl,
-	open:		hello_open,
-	release:	hello_release,
+	owner:			THIS_MODULE,
+	read:			hello_read,
+	write:			hello_write,
+	unlocked_ioctl:		hello_ioctl,
+	open:			hello_open,
+	release:		hello_release,
 };
 
 module_init(hello_init);
