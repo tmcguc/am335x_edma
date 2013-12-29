@@ -1,5 +1,5 @@
 /* 
- * Simple userspace interface to EDMA
+ * Simple userspace interface to EDMADEV
  * 
  * Currently designed to work on ARM
  * 	AM335x Cortex-A8 MPU
@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcnt1.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 int main(int argc, char **argv) {
