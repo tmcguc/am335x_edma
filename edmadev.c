@@ -7,6 +7,8 @@
  
   Andrew Righter (andrew.righter@gmail.com)
   for Ephemeron-Labs, LLC.
+
+  CAUTION: I commented the shit out of this code.
  
 */
 
@@ -70,7 +72,7 @@
 #define EDMA_PARM_17	0x4220	/* EDMA3CC_BASE + EDMA_PARM_17 = Offset for Entry 17 */
 #define EDMA_PARM_20	0x4280 	/* EDMA3CC_BASE + EDMA_PARM_20 = Offset for Entry 20 */ 
 #define EDMA_PARM_64	0x4800 	/* EDMA3CC_BASE + EDMA_PARM_64 = Offset for Entry 64 */
-#define PARM_OFFSET(param_no)	(EDMA_PARM + ((param_no) << 5))			/* How does this work? */
+#define PARM_OFFSET(param_no)	(EDMA_PARM + ((param_no) << 5))								/* How does this work? */
 
 /* 
 	PARM_OPT: EDMADEV CONFIGURATION
@@ -79,7 +81,7 @@
 	Event 17 Configuration (SPI Trigger)
 	Event 20 Configuration (Manual Trigger)
 */
-#define PARM_OPT			0x00
+#define PARM_OPT			0x00 	/* Channel Options: Transfer configuration options */
 #define PARM_OPT_PRIV				// 17/20: 	PRIV |0 << 31| 
 #define PARM_OPT_TCIENTEN   		// 17/20: 	TCIENTEN |1 << 20|
 #define PARM_OPT_TCC				// 17/20: 	TCC |TCC interrupt output << 12| 
@@ -89,22 +91,37 @@
 #define PARM_OPT_DAM				// 17/20: 	DAM |0 << 1| 
 #define PARM_OPT_SAM				// 17/20: 	SAM |1 << 0| , SAM |0 << 0|
 
+/* 
+	Offsets matching "struct edmacc_param" 
+
+	Each PaRAM Set is 32 bytes wide, these are offsets for that set
+	Each Offset (EX: PARM_SRC is a 32 bit word)
+*/
+#define PARM_SRC			0x04 	/* Event 17 - SRC = 0x480301a0 ( McSPI0 CS0 DAFRX) */
+									/* Event 20 - I define this */
+#define PARM_A_B_CNT		0x08 	/* ACNT = 4 (4 bytes in 32 bit word use this at first, test other values latter) */
+									/* BCNT = 1 (Variable 1 to 8 for the number of ADC channels) */
+#define PARM_DST			0x0c 	
+#define PARM_SRC_DST_BIDX	0x10 	
+									
+#define PARM_LINK_BCNTRLD	0x14 	
+									
+#define PARM_SRC_DST_CIDX	0x18 	
+									
+									
+									
+									
+									
+#define PARM_CCNT			0x1c 	
+									
+#define PARM_SIZE			0x20 	
 
 
 
 
-/* HIDE UNUSED SHIT IN HEADER FILE? */
 
 
-/* Offsets matching "struct edmacc_param" */
-#define PARM_SRC			0x04
-#define PARM_A_B_CNT		0x08
-#define PARM_DST			0x0c
-#define PARM_SRC_DST_BIDX	0x10
-#define PARM_LINK_BCNTRLD	0x14
-#define PARM_SRC_DST_CIDX	0x18
-#define PARM_CCNT			0x1c
-#define PARM_SIZE			0x20
+/*****************************************************************************/
 
 /* Offsets for EDMA CC global channel registers and their shadows */
 #define SH_ER		0x00	/* 64 bits */
