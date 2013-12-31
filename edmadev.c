@@ -1,3 +1,5 @@
+/*****************************************************************************/
+
 /* 
   EDMADEV Kernel Driver for Beaglebone Black
   
@@ -6,9 +8,11 @@
  	TESTED: Beaglebone Black Rev: A5
  
   Andrew Righter (andrew.righter@gmail.com)
+  Terrence McGuckin (terrence@ephemeron-labs.com)
   for Ephemeron-Labs, LLC.
 
-  CAUTION: I commented the shit out of this code.
+
+  CAUTION: We commented the shit out of this code.
  
 */
 
@@ -101,87 +105,34 @@
 									/* Event 20 - I define this */
 #define PARM_A_B_CNT		0x08 	/* ACNT = 4 (4 bytes in 32 bit word use this at first, test other values latter) */
 									/* BCNT = 1 (Variable 1 to 8 for the number of ADC channels) */
-#define PARM_DST			0x0c 	
-#define PARM_SRC_DST_BIDX	0x10 	
-									
-#define PARM_LINK_BCNTRLD	0x14 	
-									
-#define PARM_SRC_DST_CIDX	0x18 	
-									
-									
-									
-									
-									
-#define PARM_CCNT			0x1c 	
-									
-#define PARM_SIZE			0x20 	
+#define PARM_DST			0x0c 	/* DST = set to PING or PONG BLOCK *you choose these starting block for PING and PONG */
+#define PARM_SRC_DST_BIDX	0x10 	/* SRCBIDX |0x0| (source BCNT index set to 0 constant addressing mode) */
+									/* DSTBIDX |0x4| (I think this is correct for every BCNt we increment 4 bytes size in offsets in a frame) */
+#define PARM_LINK_BCNTRLD	0x14 	/* LINK address *you set this PING or PONG PaRAM address */
+									/* BCNTRLD |1| ( only revelvant in A sychronzied transfer set to BCNT */
+#define PARM_SRC_DST_CIDX	0x18 	/* SRCCIDX should be 0 ( source is in constant address mode) */
+									/* DSTCIDX ( should be ACNT x BCNT) for AB sync transfers */
+#define PARM_CCNT			0x1c 	/* CCNT ( variable should be (samples_per_point) x (points_per_line) */
+									/* RSVD = 0x0000 (always write 0 to here) Write as 32 bit word */
 
 
+/*
+	Offsets for Interupt Registers: EDMADEV Configuration
+	
+	Offsets based off of EDMA3CC_BASE 
 
-
-
+	NOTE: Either the global or shadow regions for interrupts should be enabled but not both!!
+		  Transfer completion codes can be mapped to different IPR bits, we need this to have two interrupts for ping and pong buffers
+*/
+#define	EDMA_IER	0x1050  		/* All we need for our purposes is to make sure bit 17 is set */
+#define EDMA_IESR 	0x1060 			/*  IESR |1 << 17| (write a one into it) */
+#define EDMA_IECR  	0x1058 			/*  IECR |1 << 17| */
+#define EDMA_IEPR	0x1068 			/* if value in corresponding bit is 1 than the transfer has occurred for corresponding channel, must be cleared from EDMA_IECR */
+#define EDMA_IECR 	0x1070 			/* Write here to clear interrupt after CPU grabs data from ping or pong buffer */
 
 /*****************************************************************************/
 
-/* Offsets for EDMA CC global channel registers and their shadows */
-#define SH_ER		0x00	/* 64 bits */
-#define SH_ECR		0x08	/* 64 bits */
-#define SH_ESR		0x10	/* 64 bits */
-#define SH_CER		0x18	/* 64 bits */
-#define SH_EER		0x20	/* 64 bits */
-#define SH_EECR		0x28	/* 64 bits */
-#define SH_EESR		0x30	/* 64 bits */
-#define SH_SER		0x38	/* 64 bits */
-#define SH_SECR		0x40	/* 64 bits */
-#define SH_IER		0x50	/* 64 bits */
-#define SH_IECR		0x58	/* 64 bits */
-#define SH_IESR		0x60	/* 64 bits */
-#define SH_IPR		0x68	/* 64 bits */
-#define SH_ICR		0x70	/* 64 bits */
-#define SH_IEVAL	0x78
-#define SH_QER		0x80
-#define SH_QEER		0x84
-#define SH_QEECR	0x88
-#define SH_QEESR	0x8c
-#define SH_QSER		0x90
-#define SH_QSECR	0x94
-#define SH_SIZE		0x200
-
-/* Offsets for EDMA CC global registers */
-#define EDMA_REV			0x0000
-#define EDMA_CCCFG			0x0004
-#define EDMA_QCHMAP			0x0200	/* 8 registers */
-#define EDMA_DMAQNUM		0x0240	/* 8 registers (4 on OMAP-L1xx) */
-#define EDMA_QDMAQNUM		0x0260
-#define EDMA_QUETCMAP		0x0280
-#define EDMA_QUEPRI			0x0284
-#define EDMA_EMR			0x0300	/* 64 bits */
-#define EDMA_EMCR			0x0308	/* 64 bits */
-#define EDMA_QEMR			0x0310
-#define EDMA_QEMCR			0x0314
-#define EDMA_CCERR			0x0318
-#define EDMA_CCERRCLR		0x031c
-#define EDMA_EEVAL			0x0320
-#define EDMA_DRAE			0x0340	/* 4 x 64 bits*/
-#define EDMA_QRAE			0x0380	/* 4 registers */
-#define EDMA_QUEEVTENTRY	0x0400	/* 2 x 16 registers */
-#define EDMA_QSTAT			0x0600	/* 2 registers */
-#define EDMA_QWMTHRA		0x0620
-#define EDMA_QWMTHRB		0x0624
-#define EDMA_CCSTAT			0x0640
-
-#define EDMA_M			0x1000	/* global channel registers */
-#define EDMA_ECR		0x1008
-#define EDMA_ECRH		0x100C
-#define EDMA_SHADOW0	0x2000	/* 4 regions shadowing global channels */
-
-#define CHMAP_EXIST	BIT(24)
-
-#define EDMA_MAX_DMACH           64
-#define EDMA_MAX_PARAMENTRY     512
-
-#define EDMADEV_MAJOR 			234		/* DEBUG: MAJOR REVISION, DEVIE NODE */
-
+#define EDMADEV_MAJOR 			234		/* DEBUG: MAJOR REVISION, DEVICE NODE */
 
 /*****************************************************************************/
 
@@ -191,7 +142,129 @@ MODULE_PARM_DESC(debug_enable, "enable module debug mode.");
 
 /*****************************************************************************/
 
+/* 
+	Function Declarations
 
+	Note: I will remove unneeded functions
+
+*/
+
+/*****************************************************************************/
+
+static void __iomem *edmacc_regs_base[EDMA_MAX_CC];
+
+static inline unsigned int edma_read(unsigned ctlr, int offset)
+{
+	return (unsigned int)__raw_readl(edmacc_regs_base[ctlr] + offset);
+}
+
+static inline void edma_write(unsigned ctlr, int offset, int val)
+{
+	__raw_writel(val, edmacc_regs_base[ctlr] + offset);
+}
+static inline void edma_modify(unsigned ctlr, int offset, unsigned and,
+		unsigned or)
+{
+	unsigned val = edma_read(ctlr, offset);
+	val &= and;
+	val |= or;
+	edma_write(ctlr, offset, val);
+}
+static inline void edma_and(unsigned ctlr, int offset, unsigned and)
+{
+	unsigned val = edma_read(ctlr, offset);
+	val &= and;
+	edma_write(ctlr, offset, val);
+}
+static inline void edma_or(unsigned ctlr, int offset, unsigned or)
+{
+	unsigned val = edma_read(ctlr, offset);
+	val |= or;
+	edma_write(ctlr, offset, val);
+}
+static inline unsigned int edma_read_array(unsigned ctlr, int offset, int i)
+{
+	return edma_read(ctlr, offset + (i << 2));
+}
+static inline void edma_write_array(unsigned ctlr, int offset, int i,
+		unsigned val)
+{
+	edma_write(ctlr, offset + (i << 2), val);
+}
+static inline void edma_modify_array(unsigned ctlr, int offset, int i,
+		unsigned and, unsigned or)
+{
+	edma_modify(ctlr, offset + (i << 2), and, or);
+}
+static inline void edma_or_array(unsigned ctlr, int offset, int i, unsigned or)
+{
+	edma_or(ctlr, offset + (i << 2), or);
+}
+static inline void edma_or_array2(unsigned ctlr, int offset, int i, int j,
+		unsigned or)
+{
+	edma_or(ctlr, offset + ((i*2 + j) << 2), or);
+}
+static inline void edma_write_array2(unsigned ctlr, int offset, int i, int j,
+		unsigned val)
+{
+	edma_write(ctlr, offset + ((i*2 + j) << 2), val);
+}
+static inline unsigned int edma_shadow0_read(unsigned ctlr, int offset)
+{
+	return edma_read(ctlr, EDMA_SHADOW0 + offset);
+}
+static inline unsigned int edma_shadow0_read_array(unsigned ctlr, int offset,
+		int i)
+{
+	return edma_read(ctlr, EDMA_SHADOW0 + offset + (i << 2));
+}
+static inline void edma_shadow0_write(unsigned ctlr, int offset, unsigned val)
+{
+	edma_write(ctlr, EDMA_SHADOW0 + offset, val);
+}
+static inline void edma_shadow0_write_array(unsigned ctlr, int offset, int i,
+		unsigned val)
+{
+	edma_write(ctlr, EDMA_SHADOW0 + offset + (i << 2), val);
+}
+static inline unsigned int edma_parm_read(unsigned ctlr, int offset,
+		int param_no)
+{
+	return edma_read(ctlr, EDMA_PARM + offset + (param_no << 5));
+}
+static inline void edma_parm_write(unsigned ctlr, int offset, int param_no,
+		unsigned val)
+{
+	edma_write(ctlr, EDMA_PARM + offset + (param_no << 5), val);
+}
+static inline void edma_parm_modify(unsigned ctlr, int offset, int param_no,
+		unsigned and, unsigned or)
+{
+	edma_modify(ctlr, EDMA_PARM + offset + (param_no << 5), and, or);
+}
+static inline void edma_parm_and(unsigned ctlr, int offset, int param_no,
+		unsigned and)
+{
+	edma_and(ctlr, EDMA_PARM + offset + (param_no << 5), and);
+}
+static inline void edma_parm_or(unsigned ctlr, int offset, int param_no,
+		unsigned or)
+{
+	edma_or(ctlr, EDMA_PARM + offset + (param_no << 5), or);
+}
+
+static inline void set_bits(int offset, int len, unsigned long *p)
+{
+	for (; len > 0; len--)
+		set_bit(offset + (len - 1), p);
+}
+
+static inline void clear_bits(int offset, int len, unsigned long *p)
+{
+	for (; len > 0; len--)
+		clear_bit(offset + (len - 1), p);
+}
 
 /*****************************************************************************/
 
@@ -199,11 +272,12 @@ MODULE_PARM_DESC(debug_enable, "enable module debug mode.");
 		Kernel Driver INIT and EXIT code
 */
 
+/*****************************************************************************/
 
-static int __init hello_init(void) {
+static int __init edmadev_init(void) {
 
 	int ret;
-	printk("Hello Example Init - debug mode is %s\n",
+	printk("EDMADEV Example Init - debug mode is %s\n",
 			debug_enable ? "enabled" : "disabled");
 
 	ret = register_chrdev(EDMADEV_MAJOR, "hello1", &hello_fops);
@@ -221,7 +295,7 @@ hello_fail1:
 	return ret;
 }
 
-static void __exit hello_exit(void) {
+static void __exit edmadev_exit(void) {
 	printk("*** Exiting EDMADEV Interface ***\n");
 }
 
@@ -230,6 +304,6 @@ module_init(edmadev_init);
 module_exit(edmadev_exit);
 
 MODULE_AUTHOR("Andrew Righter <andrew.righter@gmail.com");
-MODULE_DESCRIPTION("MightyEBIC EDMA Kernel Driver");
+MODULE_DESCRIPTION("MightyEBIC EDMADEV Kernel Driver");
 MODULE_LICENSE("GPL v2");
 
