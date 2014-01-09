@@ -149,4 +149,4 @@ module_exit(gtfo);
 
 MODULE_AUTHOR("Andrew Righter");
 MODULE_DESCRIPTION("Basic EDMA to Network Transfers");
-
+MODULE_LICENSE("GPLv2");
