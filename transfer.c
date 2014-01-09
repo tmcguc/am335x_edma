@@ -107,12 +107,13 @@ static void dma_callback(unsigned link, u16 ch_status, void *data) {
 
 static int setup_edma(struct trans_dma_params *tp) {
 
-	int dma_channel;
+	int dma_channel = PINGCHAN;
+	int ctlr;
 	int ret;
 
-	printk("Entering setup_edma\n");
+	printk("entering setup_edma\n");
 
-	// Triggering - Manually-triggered Transfer Request: Writinig a 1 to the corresponding bit in the Event Set Register
+	// Triggering - Manually-triggered Transfer Request: Writing a 1 to the corresponding bit in the Event Set Register
 	//edma_write(ctlr, EDMA_ESR, (1 << 17));
 
 	/* Allocate Master Channel */
@@ -122,7 +123,7 @@ static int setup_edma(struct trans_dma_params *tp) {
 		return ret;
 	}
 	tp->dma_ch = ret;
-	printk(KERN_INFO "dma_ch=%d\n", tp->dma_ch);
+	printk(KERN_INFO "ret=%d, dma_ch=%d\n", ret, tp->dma_ch);
 
 	/* Allocate Link channels */
 	ret = edma_alloc_slot(EDMA_CTLR(tp->dma_ch), EDMA_SLOT_ANY);
@@ -131,10 +132,10 @@ static int setup_edma(struct trans_dma_params *tp) {
 		return ret;
 	}
 	tp->dma_link[0] = ret;
-	printk(KERN_INFO "dma_link[0]=%d\n", tp->dma_link[0]);
+	printk(KERN_INFO "ret=%d, dma_link[0]=%d\n", ret, tp->dma_link[0]);
 
 	// Allocate slot before writing, x should be the returned INT from edma_alloc_slot (REF: L447 davinci-pcm.c)
-	//edma_write_slot(x, &pingtrans);
+	edma_write_slot(ret, &pingtrans);
 	
 	return 0;
 }
