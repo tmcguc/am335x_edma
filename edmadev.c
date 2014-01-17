@@ -11,21 +11,21 @@
   Terrence McGuckin (terrence@ephemeron-labs.com)
   for Ephemeron-Labs, LLC.
 
-
-  CAUTION: We commented the shit out of this code.
+  We commented the shit out of this code, so you don't make the same mistakes.
+  Heavily modified from EDMA.C in the Linux Kernel ARM Directory
  
 */
 
 /*****************************************************************************/
 
-#include <linux/fs.h>		/* For file_operations struct */
+#include <linux/fs.h>					/* For file_operations struct */
 
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
-#include <linux/io.h>
+#include <linux/io.h>					/* Needed for __raw_read and __raw_write functions */
 #include <linux/slab.h>
 #include <linux/edma.h>
 #include <linux/err.h>
@@ -130,7 +130,10 @@
 #define EDMA_IEPR	0x1068 			/* if value in corresponding bit is 1 than the transfer has occurred for corresponding channel, must be cleared from EDMA_IECR */
 #define EDMA_IECR 	0x1070 			/* Write here to clear interrupt after CPU grabs data from ping or pong buffer */
 
-/*****************************************************************************/
+#define CHMAP_EXIST	BIT(24)
+
+#define EDMA_MAX_DMACH           64 	/* Needed to ensure we don't exceed MAX DMA Channels */
+#define EDMA_MAX_PARAMENTRY     512 	/* Needed to ensure we don't exceed MAX PARAM Entry Slots */
 
 #define EDMADEV_MAJOR 			234		/* DEBUG: MAJOR REVISION, DEVICE NODE */
 
@@ -143,7 +146,7 @@ MODULE_PARM_DESC(debug_enable, "enable module debug mode.");
 /*****************************************************************************/
 
 /* 
-	Function Declarations
+	EDMA Function Declarations
 
 	Note: I will remove unneeded functions
 
@@ -151,7 +154,12 @@ MODULE_PARM_DESC(debug_enable, "enable module debug mode.");
 
 /*****************************************************************************/
 
+/* 
+	Fun Fact: __iomem is used as a cookie by Sparse, a tool that checks for dereferences to pointers and coding faults in the Linux Kernel
+			  Never dereference an __iomem pointer 
+*/
 static void __iomem *edmacc_regs_base[EDMA_MAX_CC];
+
 
 static inline unsigned int edma_read(unsigned ctlr, int offset)
 {
@@ -160,6 +168,7 @@ static inline unsigned int edma_read(unsigned ctlr, int offset)
 
 static inline void edma_write(unsigned ctlr, int offset, int val)
 {
+	/* Function below is defined in arm/include/io.h - writes VAL to __iomem *addr */
 	__raw_writel(val, edmacc_regs_base[ctlr] + offset);
 }
 static inline void edma_modify(unsigned ctlr, int offset, unsigned and,
@@ -265,6 +274,91 @@ static inline void clear_bits(int offset, int len, unsigned long *p)
 	for (; len > 0; len--)
 		clear_bit(offset + (len - 1), p);
 }
+/*****************************************************************************/
+
+/* actual number of DMA channels and slots on this silicon */
+struct edma {
+	/* how many dma resources of each type */
+	unsigned	num_channels;
+	unsigned	num_region;
+	unsigned	num_slots;
+	unsigned	num_tc;
+	unsigned	num_cc;
+	enum dma_event_q 	default_queue;
+
+	/* list of channels with no even trigger; terminated by "-1" */
+	const s8	*noevent;
+
+	/* The edma_inuse bit for each PaRAM slot is clear unless the
+	 * channel is in use ... by ARM or DSP, for QDMA, or whatever.
+	 */
+	DECLARE_BITMAP(edma_inuse, EDMA_MAX_PARAMENTRY);
+
+	/* The edma_unused bit for each channel is clear unless
+	 * it is not being used on this platform. It uses a bit
+	 * of SOC-specific initialization code.
+	 */
+	DECLARE_BITMAP(edma_unused, EDMA_MAX_DMACH);
+
+	unsigned	irq_res_start;
+	unsigned	irq_res_end;
+
+	struct dma_interrupt_data {
+		void (*callback)(unsigned channel, unsigned short ch_status,
+				void *data);
+		void *data;
+	} intr_data[EDMA_MAX_DMACH];
+};
+
+static struct edma *edma_cc[EDMA_MAX_CC];
+static int arch_num_cc;
+
+/* dummy param set used to (re)initialize parameter RAM slots */
+static const struct edmacc_param dummy_paramset = {
+	.link_bcntrld = 0xffff,
+	.ccnt = 1,
+};
+
+/*****************************************************************************/
+
+/*
+		DMA Channel and Parameter RAM Configuration Operations
+
+		Based on "Setting up a Transfer" TRM Section 11.5.3
+*/
+
+/*****************************************************************************/
+
+static void __init map_dmach_param(int parm_set) {			/* TODO: WTF IS CTLR? */
+	if (parm_set < EDMA_MAX_DMACH) {
+		edma_write(); 
+	}
+	/* How do you error out correctly here? To PRINTK? */
+}
+
+
+/**
+ * Step 1b: Channel Mapping
+ *
+ * map_dmach_param - Maps channel number to param entry number
+ *
+ * This maps the dma channel number to param entry numberter. In
+ * other words using the DMA channel mapping registers a param entry
+ * can be mapped to any channel
+ *
+ * Callers are responsible for ensuring the channel mapping logic is
+ * included in that particular EDMA variant (Eg : dm646x)
+ *
+ */
+static void __init map_dmach_param(unsigned ctlr)
+{
+	int i;
+
+	for (i = 0; i < EDMA_MAX_DMACH; i++)
+		edma_write_array(ctlr, EDMA_DCHMAP , i , (i << 5));
+
+
+}
 
 /*****************************************************************************/
 
@@ -298,7 +392,6 @@ hello_fail1:
 static void __exit edmadev_exit(void) {
 	printk("*** Exiting EDMADEV Interface ***\n");
 }
-
 
 module_init(edmadev_init);
 module_exit(edmadev_exit);
