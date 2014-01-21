@@ -41,7 +41,12 @@
 
 #include "transfer.h"
 
+/*
+* Using for test purposes
+*/
 #define EDMA_ESR	0x1010
+#define PINGCHAN	20
+#define PONGCHAN	64
 
 /*
  * EDMA3 Configuration
@@ -60,11 +65,20 @@
  * 
  */ 
 
+static struct trans_dma_params {
+
+	int				dma_ch;
+	int				dma_link[2];
+	struct edmacc_param		pingtrans;
+	struct edmacc_param		pongtrans;
+
+};
+
 /*
  *	The following syntax is C99 specific, using the dot (.) allows me to set values for a edmacc_param struct defind in edma.h
  */
 static struct edmacc_param pingtrans {
-	.opt = x,
+	.opt = x,							/* edmacc_params.opt offsets available from edma.h */
 	.src = x,
 	.a_b_cnt = x,
 	.dst = x,
@@ -86,15 +100,50 @@ static struct edmacc_param pongtrans {
 	.ccnt = x,
 };
 
-static void setup_dma(struct FILL_IN) {
+static int setup_edma(struct trans_dma_params *tp) {
 
-	/* Triggering
+	int dma_channel;
+	int ret;
+
+	/* 
+	 *  Triggering
 	 *  Manually-triggered Transfer Request: Writinig a 1 to the corresponding bit in the Event Set Register
 	*/
-	edma_write();
+	edma_write(ctlr, EDMA_ESR, (1 << 17));
+
+	// Master Channel
+	edma_alloc_channel();
+
+	ret = edma_alloc_channel(dma_channel, dma_callback, cam, EVENTQ_0);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "allocating channel for DMA failed\n");
+		return ret;
+	}
+	cam->dma_ch = ret;
+	dev_info(&pdev->dev, "dma_ch=%d\n", cam->dma_ch);
+
+
+	// Link Channel
+	edma_alloc_slot();
+
+	/* allocate link channels */
+	ret = edma_alloc_slot(EDMA_CTLR(cam->dma_ch), EDMA_SLOT_ANY);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "allocating slot for DMA failed\n");
+		return ret;
+	}
+	cam->dma_link[0] = ret;
+	dev_info(&pdev->dev, "dma_link[0]=%d\n", cam->dma_link[0]);
+
+
+	// Allocate slot before writing, x should be the returned INT from edma_alloc_slot (REF: L447 davinci-pcm.c)
+	edma_write_slot(x, &pingtrans);
 	
-
-
+	return 0;
 }
+
+
+
+
 
 
