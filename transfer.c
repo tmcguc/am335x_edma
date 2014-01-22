@@ -110,6 +110,8 @@ static int setup_edma(struct trans_dma_params *tp) {
 	int dma_channel;
 	int ret;
 
+	printk("Entering setup_edma\n");
+
 	// Triggering - Manually-triggered Transfer Request: Writinig a 1 to the corresponding bit in the Event Set Register
 	//edma_write(ctlr, EDMA_ESR, (1 << 17));
 
@@ -136,3 +138,15 @@ static int setup_edma(struct trans_dma_params *tp) {
 	
 	return 0;
 }
+
+static void __exit gtfo(void) {
+
+	printk("Exiting Transfer Driver\n");
+}
+
+module_init(setup_edma);
+module_exit(gtfo);
+
+MODULE_AUTHOR("Andrew Righter");
+MODULE_DESCRIPTION("Basic EDMA to Network Transfers");
+
