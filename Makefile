@@ -1,5 +1,4 @@
-obj-m += edmadev.o
-obj-m += useredma.o
+obj-m += transfer.o
 
 all:
 	make -I /home/ubuntu/am335x_edma/include -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules

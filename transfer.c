@@ -35,15 +35,12 @@
 #include <linux/dma-mapping.h>
 #include <linux/kernel.h>
 #include <linux/genalloc.h>
-#include <linux/platform_data/edma.h>
+//#include <linux/platform_data/edma.h>
 
 #include <asm/dma.h>
 
-#include "transfer.h"
+#include "edma.h"
 
-/*
-* Using for test purposes
-*/
 #define EDMA_ESR	0x1010
 #define PINGCHAN	20
 #define PONGCHAN	64
@@ -77,73 +74,65 @@ static struct trans_dma_params {
 /*
  *	The following syntax is C99 specific, using the dot (.) allows me to set values for a edmacc_param struct defind in edma.h
  */
-static struct edmacc_param pingtrans {
-	.opt = x,							/* edmacc_params.opt offsets available from edma.h */
-	.src = x,
-	.a_b_cnt = x,
-	.dst = x,
-	.src_dst_bidx = x,
-	.link_bcntrld = x,
-	.src_dst_cidx = x,
-	.ccnt = x,
+static struct edmacc_param pingtrans = {
+	.opt = 0,							/* edmacc_params.opt offsets available from edma.h */
+	.src = 0,
+	.a_b_cnt = 0,
+	.dst = 0,
+	.src_dst_bidx = 0,
+	.link_bcntrld = 0,
+	.src_dst_cidx = 0,
+	.ccnt = 0,
 };
 
 
-static struct edmacc_param pongtrans {
-	.opt = x,
-	.src = x,
-	.a_b_cnt = x,
-	.dst = x,
-	.src_dst_bidx = x,
-	.link_bcntrld = x,
-	.src_dst_cidx = x,
-	.ccnt = x,
+static struct edmacc_param pongtrans = {
+	.opt = 0,							/* edmacc_params.opt offsets available from edma.h */
+	.src = 0,
+	.a_b_cnt = 0,
+	.dst = 0,
+	.src_dst_bidx = 0,
+	.link_bcntrld = 0,
+	.src_dst_cidx = 0,
+	.ccnt = 0,
 };
+
+static void dma_callback(unsigned link, u16 ch_status, void *data) {
+
+	printk(KERN_INFO "EDMA transfer test: link=%d, status=0x%x\n", link, ch_status);
+
+	if (unlikely(ch_status != DMA_COMPLETE))
+		return;
+}
 
 static int setup_edma(struct trans_dma_params *tp) {
 
 	int dma_channel;
 	int ret;
 
-	/* 
-	 *  Triggering
-	 *  Manually-triggered Transfer Request: Writinig a 1 to the corresponding bit in the Event Set Register
-	*/
-	edma_write(ctlr, EDMA_ESR, (1 << 17));
+	// Triggering - Manually-triggered Transfer Request: Writinig a 1 to the corresponding bit in the Event Set Register
+	//edma_write(ctlr, EDMA_ESR, (1 << 17));
 
-	// Master Channel
-	edma_alloc_channel();
-
-	ret = edma_alloc_channel(dma_channel, dma_callback, cam, EVENTQ_0);
+	/* Allocate Master Channel */
+	ret = edma_alloc_channel(dma_channel, dma_callback, tp, EVENTQ_0);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "allocating channel for DMA failed\n");
+		printk(KERN_INFO "allocating channel for DMA failed\n");
 		return ret;
 	}
-	cam->dma_ch = ret;
-	dev_info(&pdev->dev, "dma_ch=%d\n", cam->dma_ch);
+	tp->dma_ch = ret;
+	printk(KERN_INFO "dma_ch=%d\n", tp->dma_ch);
 
-
-	// Link Channel
-	edma_alloc_slot();
-
-	/* allocate link channels */
-	ret = edma_alloc_slot(EDMA_CTLR(cam->dma_ch), EDMA_SLOT_ANY);
+	/* Allocate Link channels */
+	ret = edma_alloc_slot(EDMA_CTLR(tp->dma_ch), EDMA_SLOT_ANY);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "allocating slot for DMA failed\n");
+		printk(KERN_INFO "allocating slot for DMA failed\n");
 		return ret;
 	}
-	cam->dma_link[0] = ret;
-	dev_info(&pdev->dev, "dma_link[0]=%d\n", cam->dma_link[0]);
-
+	tp->dma_link[0] = ret;
+	printk(KERN_INFO "dma_link[0]=%d\n", tp->dma_link[0]);
 
 	// Allocate slot before writing, x should be the returned INT from edma_alloc_slot (REF: L447 davinci-pcm.c)
-	edma_write_slot(x, &pingtrans);
+	//edma_write_slot(x, &pingtrans);
 	
 	return 0;
 }
-
-
-
-
-
-
