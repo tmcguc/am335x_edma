@@ -4,9 +4,8 @@
  * Currently designed to work on ARM
  * 	AM335x Cortex-A8 MPU
  *
- * Andrew Righter (andrew.righter@gmail.com)
- * for Ephemeron-Labs, LLC.
- *
+ * This code will interface to /dev/mighty_dma device node to 
+*  	access the mighty_dma.ko kernel module
 */
 
 #include <stdio.h>
