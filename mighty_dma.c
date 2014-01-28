@@ -5,12 +5,14 @@
  *
  */
 
+#include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
-#include <linux/dmapool.h>		/* DMA Pool API */
-#include <linux/dma-mapping.h>		/* dma_addr_t type */
-#include <linux/genalloc.h>		/* DMA allocation stuff */
+#include <linux/dmapool.h>
+#include <linux/dma-mapping.h>	
+#include <linux/dmaengine.h>
+#include <linux/genalloc.h>	
 #include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/slab.h>
@@ -18,12 +20,56 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/spinlock.h>
+#include <linux/list.h>
 
-#include <linux/platform_device.h>	/* Register/Unregister Platform Drivers - Do we need this? */
+#include <linux/platform_device.h>		/* Register/Unregister Platform Drivers */
+#include <linux/platform_data/edma.h>   /* edmacc_param type */
 
-#define PINGCHAN	20
-#define PONGCHAN	64
+#define PINGCHAN		20
+#define PONGCHAN		64
 #define DMA_POOL_SIZE	4096
+
+#define EDMA_CTLRS	2
+#define EDMA_CHANS	32
+
+/* Max of 16 segments per channel to conserve PaRAM slots */
+#define MAX_NR_SG			16
+#define EDMA_MAX_SLOTS		MAX_NR_SG
+#define EDMA_DESCRIPTORS	16
+
+/* from d/d/edma.c */
+ struct edma_desc {
+	//struct virt_dma_desc	vdesc;
+	//struct list_head		node;
+	int						absync;
+	int						pset_nr;
+	struct edmacc_param		pset[0];
+};
+
+struct edma_cc;
+
+struct edma_chan {
+	//struct virt_dma_chan		vchan;
+	//struct list_head			node;
+	struct edma_desc			*edesc;
+	struct edma_cc				*ecc;
+	int							ch_num;
+	bool						alloced;
+	int							slot[EDMA_MAX_SLOTS];
+	//struct dma_slave_config		cfg;
+	//struct dmaengine_chan_caps	caps;
+};
+
+struct edma_cc {
+	int						ctlr;
+	//struct dma_device		dma_slave;
+	struct edma_chan		slave_chans[EDMA_CHANS];
+	int						num_slave_chans;
+	int						slot_20;			/* TESTING */
+	int 					slot_17;			/* FOR SPI TRIGGER */
+};
+
 
 /* DMA memory addresses */
 struct mem_addr {
@@ -36,42 +82,22 @@ struct mem_addr {
 struct ebic_dmac {
 
 	struct mem_addr		*kmem_addr;		/* Memory Address returned from dma_pool_alloc */
-	dma_addr_t		dma_handle;		/* DMA Handle set by dma_pool_alloc */
+	dma_addr_t			dma_handle;		/* DMA Handle set by dma_pool_alloc */
 
-	struct edmacc_param	dma_test_params;	/* unsigned int {opt, src, a_b_cnt, dst, src_dst_bidx, link_bcntrld, src_dst_cidx, ccnt}  */
-	struct edmacc_param	pingset;
-	struct edmacc_param	pongset;
+	struct edmacc_param	*dma_test_params;
+	//struct edmacc_param	*pingset;
+	//struct edmacc_param	*pongset;
 
 	spinlock_t		lock;
-	int			dma_ch;
-	int			dma_link[2];
-	int			slot;
+	int				dma_ch;
+	int				dma_link[2];
+	int				slot;
 };
 
 static struct dma_pool *pool_a;				/* Required for dma_pool_create */
 static struct dma_pool *pool_b;
 
-static struct platform_device *pdev0;
-
-static struct platform_driver edma_driver = {
-
-	.probe		= (struct ebic_dev *)edma_probe,
-	.remove		= (struct ebic_dev *)edma_remove,
-	.driver = {
-		.name = "edma-ebic",
-		.owner = THIS_MODULE,
-	},
-};
-
-static const struct platform_device_info edma_dev_info0 = {
-	.name = "edma-ebic",
-	.id = 0,
-	.dma_mask = DMA_BIT_MASK(32),
-};
-
 /*
- *	The following syntax is C99 specific, using the dot (.) allows me to set values for a edmacc_param struct defind in edma.h
- */
 static struct edmacc_param pingset = {
 	.opt = 0,
 	.src = 0,
@@ -94,6 +120,7 @@ static struct edmacc_param pongset = {
 	.src_dst_cidx = 0,
 	.ccnt = 0,
 };
+*/
 
 static void dma_callback(unsigned link, u16 ch_status, void *data) {
 
@@ -103,8 +130,12 @@ static void dma_callback(unsigned link, u16 ch_status, void *data) {
 		return;
 }
 
+//static int edma_probe(struct ebic_dmac *edev) {
+static int edma_probe(struct platform_device *pdev) {
 
-static int __init dma_init(void) {
+	int dma_channel = PINGCHAN;
+	//int ctlr;
+	int ret;
 
 	struct ebic_dmac *dmac_a;
 	struct ebic_dmac *dmac_b;
@@ -112,9 +143,10 @@ static int __init dma_init(void) {
 	struct mem_addr *kmem_addr_a;
 	struct mem_addr *kmem_addr_b;
 
-	struct device *dev_a;			/* Where are these set? */
-	struct device *dev_b;
-	
+	//struct device *dev_a;			/* Where are these set? */
+	//struct device *dev_b;
+
+	printk(KERN_INFO "Entering edma_probe function\n");
 	printk(KERN_INFO "Allocating Memory for DMA\n");
 
 	/*
@@ -140,6 +172,7 @@ static int __init dma_init(void) {
 		return -ENOMEM;
 	}
 
+
 	/* Allocate memory from a dma_pool */
 	kmem_addr_a = dma_pool_alloc(pool_a, GFP_ATOMIC, &dmac_a->dma_handle);
 	kmem_addr_b = dma_pool_alloc(pool_b, GFP_ATOMIC, &dmac_b->dma_handle);
@@ -151,49 +184,20 @@ static int __init dma_init(void) {
 
 	/* DEBUG: Prints values for own sanity */
 	printk(KERN_INFO "dma_handle_a: 0x%08x dma_handle_b: 0x%08x", dmac_a->dma_handle, dmac_b->dma_handle);
-	printk(KERN_INFO "kmem_addr_a:%08x, kmem_addr_b:%08x", &kmem_addr_a, &kmem_addr_b);
+	printk(KERN_INFO "kmem_addr_a:%p, kmem_addr_b:%p", &kmem_addr_a, &kmem_addr_b);
 
 	//printk(KERN_INFO "kmem_addr_a->src_addr: %08x, kmem_addr_b->src_addr: %08x", kmem_addr_a->src_addr, kmem_addr_b->dst_addr);
 	//printk(KERN_INFO "kmem_addr_a->dst_addr: %08x, kmem_addr_b->dst_addr: %08x", kmem_addr_a->dst_addr, kmem_addr_b->dst_addr);
-
-	/*
-	 *
-	 *	EDMA Configuration
-	 *
-	 */
-	int ret = platform_driver_register(&edma_driver);
-	
-	if (ret == 0) {
-		pdev0 = platform_device_register_full(&edma_dev_info0);
-		printk(KERN_INFO "Platform Device Registered!\n");
-		if (IS_ERR(pdev0)) {
-			platform_driver_unregister(&edma_driver);
-			ret = PTR_ERR(pdev0);
-			goto out;
-		}
-	}
-
-out:
-	return ret;
-}
-
-static int edma_probe(struct ebic_dev *edev) {
-
-	int dma_channel = PINGCHAN;
-	int ctlr;
-	int ret;
-
-	printk("entering edma_probe\n");
 
 	/* 
 	* Allocate CHANNELS
 	*
 	*  Here's the skinny: Allocating dma_channel (master), exception handler if RET < 0 then allocation failed
-	*	then print to kernel debug (dmesg | tail) then I'm setting RET equal to the struct ebic_dev 
+	*	then print to kernel debug (dmesg | tail) then I'm setting RET equal to the struct ebic_dmac 
 	* 	field dma_chan for later use.
 	*
 	*/
-	ret = edma_alloc_channel(dma_channel, dma_callback, edev, EVENTQ_0);
+	ret = edma_alloc_channel(dma_channel, dma_callback, pdev, EVENTQ_0);
 	if (ret < 0) {
 		printk(KERN_INFO "allocating channel for DMA failed\n");
 		return ret;
@@ -229,14 +233,60 @@ static int edma_probe(struct ebic_dev *edev) {
 	return 0;
 }
 
-static int edma_remove(struct ebic_dev *edev) {
+static int edma_remove(struct platform_device *pdev) {
 
-	edma_free_slot(edev->slot); 
+	struct device *dev = &pdev->dev;
+	struct edma_cc *ecc = dev_get_drvdata(dev);						/* return dev->driver_data; */
+
+	/* Moved from edma_remove */
+	edma_free_slot(ecc->slot_20); 
 
 	return 0;
 }
 
+static struct platform_driver edma_driver = {
+	.probe = edma_probe,
+	.remove	= edma_remove,
+	.driver = {
+		.name = "mighty-ebic-dma",
+		.owner = THIS_MODULE,
+	},
+
+};
+
+static struct platform_device *pdev0;
+
+static const struct platform_device_info edma_dev_info0 = {
+	.name = "mighty-ebic-dma",
+	.id = 0,
+	.dma_mask = DMA_BIT_MASK(32),
+};
+
+static int __init dma_init(void) {
+
+	int ret = platform_driver_register(&edma_driver);
+
+	if (ret == 0) {
+		pdev0 = platform_device_register_full(&edma_dev_info0);
+		if (IS_ERR(pdev0)) {
+			platform_driver_unregister(&edma_driver);
+			ret = PTR_ERR(pdev0);
+			goto out;
+		}
+	}
+
+out:
+	return ret;
+}
+subsys_initcall(dma_init);
+
 static void __exit dma_exit(void) {
+
+	struct ebic_dmac *dmac_a;
+	struct ebic_dmac *dmac_b;
+
+	struct mem_addr *kmem_addr_a;
+	struct mem_addr *kmem_addr_b;
 
 	/* Free memory from dma_pool */
 	printk(KERN_INFO "Freeing all dma_pool memory\n");
@@ -249,18 +299,18 @@ static void __exit dma_exit(void) {
 	dma_pool_destroy(pool_b);
 
 
-	printk(KERN_INFO "edev->dma_chan=%d\n", edev->dma_ch);
+	printk(KERN_INFO "dmac_a->dma_chan=%d\n", dmac_a->dma_ch);
+	printk(KERN_INFO "dmac_b->dma_chan%d\n", dmac_b->dma_ch);
 	// Disable EDMA
-	edma_stop(edev->dma_ch);
+	edma_stop(dmac_a->dma_ch);
+
+	printk(KERN_INFO "Unregistering Device and Driver\n");
 
 	platform_device_unregister(pdev0);
 	platform_driver_unregister(&edma_driver);
 
-        printk(KERN_INFO "Exiting EBIC DMA Driver\n");
 }
-
-module_init(dma_init);		/* Runs when INSMOD or MODPROBE starts */
-module_exit(dma_exit);		/* Runs when RMMOD or MODPROBE -R starts */
+module_exit(dma_exit);
  
 MODULE_AUTHOR("Ephemeron Labs Inc.");
 MODULE_DESCRIPTION("Basic EDMA to Network Transfers");
