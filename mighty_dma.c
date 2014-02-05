@@ -1,4 +1,19 @@
 
+/*
+ * Mighty EBIC DMA Driver
+ * 	version 0.1
+ *   
+ *  STABLE RELEASE: Registers as a working platform driver/device with the Linux Kernel
+ * 		while providing functions for allocating kernel memory, DMA pools, and handling
+ * 		the setup of EDMA3 Controller functions for the Beaglebone Black. Current
+ * 		configuration is specific to the Mighty EBIC, review channels, slots and PaRAM
+ * 		sets before using.
+ *
+ *  Andrew Righter <q@crypto.com>
+ *  Ephemeron Labs, Inc.
+ * 	February 5, 2014
+*/
+
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -184,6 +199,7 @@ static int edma_probe(struct platform_device *pdev) {
 	platform_set_drvdata(pdev, ecc);
 
 	ret = edma_start(ecc->slot[0]);
+	printk(KERN_INFO "edma started on channel:%d\n", ecc->slot[0]);
 	if (ret != 0) {
 		printk(KERN_INFO "edma_start failed\n");
 		return ret;
