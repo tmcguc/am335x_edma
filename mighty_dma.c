@@ -53,7 +53,26 @@ static void edma_execute(struct edma_cc *ecc) {
 	struct edma_desc *edesc;
 
 	edesc = ecc->edesc;
-	edma_write_slot(ecc->slot[0], &edesc->pset[17]);
+	edesc->src_port = 0x480301a0;
+
+	// change slot[0] to PINGSET and slot[1] to PONGSET
+	edma_set_src(ecc->slot[0], edesc->src_port, FIFO, W32BIT);
+	edma_set_src(ecc->slot[1], edesc->src_port, FIFO, W32BIT);
+
+	edma_set_dest(ecc->slot[0], ecc->kmem_addr_a->src_addr, FIFO, W32BIT);
+	edma_set_dest(ecc->slot[1], ecc->kmem_addr_b->src_addr, FIFO, W32BIT);
+
+	edma_set_src_index(ecc->slot[0], 0, 0);
+	edma_set_dest_index(ecc->slot[0], 4, 32);
+
+	edma_set_src_index(ecc->slot[1], 0, 0);
+	edma_set_dest_index(ecc->slot[1], 4, 32);
+
+	edma_link(ecc->slot[0], ecc->slot[1]);
+
+	edma_write_slot(ecc->slot[0], &edesc->pingset);
+	edma_write_slot(ecc->slot[1], &edesc->pongset);
+	//edma_write_slot(ecc->slot[0], &edesc->pset[17]);
 }
 
 static void dma_callback(unsigned link, u16 ch_status, void *data) {
@@ -167,6 +186,8 @@ static int edma_probe(struct platform_device *pdev) {
 	printk(KERN_INFO "dmac_a: %p\n", ecc->dmac_a);
 	printk(KERN_INFO "dmac_b: %p\n", ecc->dmac_b);
 #endif
+
+	// DMA_POOL_SIZE will be dynamically sized based on how many channels of data we have (multiple of 4)
 	pool_a = dma_pool_create("pool_a memtest", NULL, DMA_POOL_SIZE, 16, 0);
 	pool_b = dma_pool_create("pool_b memtest", NULL, DMA_POOL_SIZE, 16, 0);
 
