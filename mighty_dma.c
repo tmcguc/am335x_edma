@@ -24,11 +24,6 @@
 #include "include/mighty_dma.h"
 #include "include/dmaengine.h"
 
-#define DEBUG			1	
-#define PINGCHAN		20
-#define PONGCHAN		64
-#define DMA_POOL_SIZE	4096
-
 static struct dma_pool *pool_a;				/* Required for dma_pool_create */
 static struct dma_pool *pool_b;
 
@@ -36,7 +31,37 @@ static inline struct edma_chan *to_edma_chan(struct dma_chan *c) {
 	return container_of(c, struct edma_chan, vchan.chan);
 }
 
-// DMA CALLBACK
+static void dma_callback(unsigned link, u16 ch_status, void *data) {
+
+#ifdef DEBUG
+	printk(KERN_INFO "EDMA transfer test: link=%d, status=0x%x\n", link, ch_status);
+#endif
+	if (unlikely(ch_status != DMA_COMPLETE))
+		return;
+}
+
+static int edma_alloc_chan_resources(struct dma_chan *chan) {
+
+	struct edma_chan *echan = to_edma_chan(chan);
+	//struct device *dev = chan->device->dev;
+
+	int a_ch_num;
+
+	a_ch_num = edma_alloc_channel(echan->ch_num, dma_callback, chan, EVENTQ_0);
+
+	if (a_ch_num < 0) {
+		printk(KERN_INFO "allocating channel for DMA failed\n");
+		return -EINVAL;
+	}
+
+	echan->alloced = true;
+	echan->slot[0] = a_ch_num;
+
+#ifdef DEBUG
+	printk(KERN_INFO "dma_ch=%d\n", echan->slot[0]);
+#endif
+	return 0;
+}
 
 static int edma_probe(struct platform_device *pdev) {
 
@@ -63,8 +88,16 @@ static int edma_probe(struct platform_device *pdev) {
 
 	ecc->ctlr = pdev->id;
 
+	ecc->slot_17 = edma_alloc_slot(ecc->ctlr, EDMA_SLOT_ANY);
+	if (ecc->slot_17 < 0) {
+		printk(KERN_INFO "Can't allocate PaRAM Slot 17\n");
+		return -EIO;
+	}
+#ifdef DEBUG
+	printk(KERN_INFO "Allocated PaRAM Slot: %d\n", ecc->slot_17);
 	printk(KERN_INFO "ecc->ctlr: %d\n", ecc->ctlr);
-
+#endif
+	
 	dmac_a = kzalloc(sizeof(struct ebic_dmac), GFP_KERNEL);
 	dmac_b = kzalloc(sizeof(struct ebic_dmac), GFP_KERNEL);
 
@@ -73,7 +106,7 @@ static int edma_probe(struct platform_device *pdev) {
 		return -ENOMEM;
 	}
 
-	ecc->dmac_a = dmac_a;
+	ecc->dmac_a = dmac_a;	
 	ecc->dmac_b = dmac_b;
 
 #ifdef DEBUG
@@ -106,9 +139,6 @@ static int edma_probe(struct platform_device *pdev) {
 	printk(KERN_INFO "ecc->kmem_addr_a: %p\n", ecc->kmem_addr_a);
 	printk(KERN_INFO "ecc->kmem_addr_b: %p\n", ecc->kmem_addr_b);
 #endif
-
-	// Run the EDMA Allocate Channel function
-	//edma_alloc_chan_resources;
 
 	platform_set_drvdata(pdev, ecc);
 

@@ -29,6 +29,11 @@
 #define EDMA_MAX_SLOTS		MAX_NR_SG
 #define EDMA_DESCRIPTORS	16
 
+#define DEBUG			1	
+#define PINGCHAN		20
+#define PONGCHAN		64
+#define DMA_POOL_SIZE	4096
+
 /* DMA memory addresses */
 struct mem_addr {
 	u32	src_addr;
@@ -59,7 +64,7 @@ struct edma_chan {
 };
 
 struct edma_cc {
-	int				ctlr;
+	int						ctlr;
 	//struct dma_device		dma_slave;
 	struct edma_chan		slave_chans[EDMA_CHANS];
 	int						num_slave_chans;
