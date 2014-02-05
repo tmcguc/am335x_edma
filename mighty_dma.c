@@ -27,11 +27,34 @@
 static struct dma_pool *pool_a;				/* Required for dma_pool_create */
 static struct dma_pool *pool_b;
 
+/*
 static inline struct edma_chan *to_edma_chan(struct dma_chan *c) {
 	return container_of(c, struct edma_chan, vchan.chan);
 }
+*/
+
+static void edma_execute(struct edma_cc *ecc) {
+
+	struct edma_desc *edesc;
+
+	edesc = ecc->edesc;
+	edma_write_slot(ecc->slot[0], &edesc->pset[17]);
+}
 
 static void dma_callback(unsigned link, u16 ch_status, void *data) {
+
+	struct edma_cc *ecc = data;
+	struct edma_desc *edesc;
+
+	edma_stop(ecc->slot[0]);
+
+	edesc = ecc->edesc;
+	if (edesc) {
+		edma_execute(ecc);
+	}
+	else {
+		printk(KERN_INFO "Could not run edma_execute\n");
+	}
 
 #ifdef DEBUG
 	printk(KERN_INFO "EDMA transfer test: link=%d, status=0x%x\n", link, ch_status);
@@ -40,28 +63,38 @@ static void dma_callback(unsigned link, u16 ch_status, void *data) {
 		return;
 }
 
-static int edma_alloc_chan_resources(struct dma_chan *chan) {
-
-	struct edma_chan *echan = to_edma_chan(chan);
+/*
+	//struct edma_chan *echan = to_edma_chan(chan);
 	//struct device *dev = chan->device->dev;
 
-	int a_ch_num;
+	... DIS SOME BULLSHIT
 
-	a_ch_num = edma_alloc_channel(echan->ch_num, dma_callback, chan, EVENTQ_0);
+	//echan->alloced = true;
+	//echan->slot[0] = a_ch_num;
+	ecc->slot[0] = a_ch_num;
+}
+*/
 
-	if (a_ch_num < 0) {
-		printk(KERN_INFO "allocating channel for DMA failed\n");
+static int edma_dma_init(struct edma_cc *ecc) {
+
+	int dma_alloc_channel = 17;
+	int ret;
+
+	printk(KERN_INFO "INSIDE edma_dma_init\n");
+	//edma_alloc_chan_resources(ecc);
+
+	ret = edma_alloc_channel(dma_alloc_channel, dma_callback, ecc, EVENTQ_0);
+	if (ret < 0) {
+		printk(KERN_INFO "edma_alloc_channel failed\n");
 		return -EINVAL;
 	}
+	printk(KERN_INFO "edma channel allocated:%d\n", ret);
 
-	echan->alloced = true;
-	echan->slot[0] = a_ch_num;
+	ecc->slot[0] = ret;
 
-#ifdef DEBUG
-	printk(KERN_INFO "dma_ch=%d\n", echan->slot[0]);
-#endif
 	return 0;
 }
+
 
 static int edma_probe(struct platform_device *pdev) {
 
@@ -73,7 +106,7 @@ static int edma_probe(struct platform_device *pdev) {
 	struct mem_addr *kmem_addr_a;
 	struct mem_addr *kmem_addr_b;
 
-	// how do i link dev->p to my ecc struct? 
+	int ret;
 
 #ifdef DEBUG
 	printk(KERN_INFO "Entering edma_probe function\n");
@@ -88,13 +121,19 @@ static int edma_probe(struct platform_device *pdev) {
 
 	ecc->ctlr = pdev->id;
 
+	/* 
+	 * 		Enable this code only if you need a dummy_slot
+	 * 		all PaRAM slots <64 use DCHMAP function
 	ecc->slot_17 = edma_alloc_slot(ecc->ctlr, EDMA_SLOT_ANY);
 	if (ecc->slot_17 < 0) {
 		printk(KERN_INFO "Can't allocate PaRAM Slot 17\n");
 		return -EIO;
 	}
+	* 
+	*/
+
 #ifdef DEBUG
-	printk(KERN_INFO "Allocated PaRAM Slot: %d\n", ecc->slot_17);
+	//printk(KERN_INFO "Allocated PaRAM Slot: %d\n", ecc->slot_17);
 	printk(KERN_INFO "ecc->ctlr: %d\n", ecc->ctlr);
 #endif
 	
@@ -140,7 +179,15 @@ static int edma_probe(struct platform_device *pdev) {
 	printk(KERN_INFO "ecc->kmem_addr_b: %p\n", ecc->kmem_addr_b);
 #endif
 
+	edma_dma_init(ecc);
+
 	platform_set_drvdata(pdev, ecc);
+
+	ret = edma_start(ecc->slot[0]);
+	if (ret != 0) {
+		printk(KERN_INFO "edma_start failed\n");
+		return ret;
+	}
 
 	return 0;
 }
@@ -160,8 +207,8 @@ static int edma_remove(struct platform_device *pdev) {
 	dma_pool_destroy(pool_b);
 
 	// Disable EDMA
-	//edma_stop(ecc->dmac_a->dma_ch);
-	//edma_free_slot(ecc->slot_20);
+	edma_stop(ecc->slot[0]);
+	edma_free_slot(ecc->slot[0]);
 
 	return 0;
 }

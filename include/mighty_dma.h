@@ -40,19 +40,45 @@ struct mem_addr {
 	u32	dst_addr;
 };
 
-/* from d/d/edma.c */
 struct edma_desc {
 	//struct virt_dma_desc	vdesc;
 	//struct list_head		node;
 	int						absync;
 	int						pset_nr;
 	struct edmacc_param		pset[0];
+	//struct edmacc_param		pingset;
+	//struct edmacc_param		pongset;
 };
 
 struct edma_cc;
 
+/*
 struct edma_chan {
 	struct virt_dma_chan	vchan;
+	//struct list_head		node;
+	struct edma_desc		*edesc;
+	struct edma_cc			*ecc;
+	int						ch_num;
+	bool					alloced;
+	//int						slot[EDMA_MAX_SLOTS];
+	//struct dma_slave_config		cfg;
+	//struct dmaengine_chan_caps	caps;
+};
+*/
+
+struct edma_cc {
+	int						ctlr;
+	struct dma_device		dma_slave;
+	//struct edma_chan		slave_chans[EDMA_CHANS];
+	//int					num_slave_chans;
+	
+	struct ebic_dmac		*dmac_a;
+	struct ebic_dmac		*dmac_b;
+
+	struct mem_addr			*kmem_addr_a;		/* Memory Address returned from dma_pool_alloc */
+	struct mem_addr			*kmem_addr_b;
+
+	//struct virt_dma_chan	vchan;
 	//struct list_head		node;
 	struct edma_desc		*edesc;
 	struct edma_cc			*ecc;
@@ -61,21 +87,6 @@ struct edma_chan {
 	int						slot[EDMA_MAX_SLOTS];
 	//struct dma_slave_config		cfg;
 	//struct dmaengine_chan_caps	caps;
-};
-
-struct edma_cc {
-	int						ctlr;
-	//struct dma_device		dma_slave;
-	struct edma_chan		slave_chans[EDMA_CHANS];
-	int						num_slave_chans;
-	int						slot_20;			/* TESTING */
-	int 					slot_17;			/* FOR SPI TRIGGER */
-	
-	struct ebic_dmac		*dmac_a;
-	struct ebic_dmac		*dmac_b;
-
-	struct mem_addr			*kmem_addr_a;		/* Memory Address returned from dma_pool_alloc */
-	struct mem_addr			*kmem_addr_b;
 
 };
 
@@ -84,8 +95,6 @@ struct ebic_dmac {
 	dma_addr_t		dma_handle;		/* DMA Handle set by dma_pool_alloc */
 
 	struct edmacc_param	*dma_test_params;
-	struct edmacc_param	*pingset;
-	struct edmacc_param	*pongset;
 
 	spinlock_t		lock;
 	int				dma_ch;
