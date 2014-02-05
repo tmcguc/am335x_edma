@@ -3,6 +3,8 @@ am335x_edma
 
 **DEVELOPMENT BRANCH**
 
+USE MASTER BRANCH FOR STABLE RELEASE (Currently version 0.1)
+
 Information and Examples for using the Enhanced Direct Memory Access (EDMA) controllers
 on the TI Beaglebone Black (am335x) ARM CPU
 
