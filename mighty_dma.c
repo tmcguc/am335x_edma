@@ -57,21 +57,27 @@ static void edma_execute(struct edma_cc *ecc) {
 
 	// change slot[0] to PINGSET and slot[1] to PONGSET
 	edma_set_src(ecc->slot[0], edesc->src_port, FIFO, W32BIT);
-	edma_set_src(ecc->slot[1], edesc->src_port, FIFO, W32BIT);
+	//edma_set_src(ecc->slot[1], edesc->src_port, FIFO, W32BIT);
 
 	edma_set_dest(ecc->slot[0], ecc->kmem_addr_a->src_addr, FIFO, W32BIT);
-	edma_set_dest(ecc->slot[1], ecc->kmem_addr_b->src_addr, FIFO, W32BIT);
+	//edma_set_dest(ecc->slot[1], ecc->kmem_addr_b->src_addr, FIFO, W32BIT);
 
 	edma_set_src_index(ecc->slot[0], 0, 0);
 	edma_set_dest_index(ecc->slot[0], 4, 32);
 
-	edma_set_src_index(ecc->slot[1], 0, 0);
-	edma_set_dest_index(ecc->slot[1], 4, 32);
+	//edma_set_src_index(ecc->slot[1], 0, 0);
+	//edma_set_dest_index(ecc->slot[1], 4, 32);
 
-	edma_link(ecc->slot[0], ecc->slot[1]);
+	//edma_link(ecc->slot[0], ecc->slot[1]);
 
+	edma_read_slot(ecc->slot[0], &edesc->pingset);
+	printk(KERN_INFO "%d:, opt=%x, src=%x, a_b_cnt=%x dst=%x\n", ecc->slot[0], pingset.opt, pingset.src, pingset.a_b_cnt, pingset.dst);
+	
 	edma_write_slot(ecc->slot[0], &edesc->pingset);
-	edma_write_slot(ecc->slot[1], &edesc->pongset);
+	printk(KERN_INFO "%d:, opt=%x, src=%x, a_b_cnt=%x dst=%x\n", ecc->slot[0], pingset.opt, pingset.src, pingset.a_b_cnt, pingset.dst);
+
+
+	//edma_write_slot(ecc->slot[1], &edesc->pongset);
 	//edma_write_slot(ecc->slot[0], &edesc->pset[17]);
 }
 
@@ -80,11 +86,10 @@ static void dma_callback(unsigned link, u16 ch_status, void *data) {
 	struct edma_cc *ecc = data;
 	struct edma_desc *edesc;
 
-	edma_stop(ecc->slot[0]);
-
 	edesc = ecc->edesc;
+	printk(KERN_INFO "dis shit running? bad!\n");
 	if (edesc) {
-		edma_execute(ecc);
+		edma_execute(ecc);///TODO: edma execute isn't called before this src and dest not set untill called back transfer doesn't happen,  even triggered but goes nowhere
 	}
 	else {
 		printk(KERN_INFO "Could not run edma_execute\n");
@@ -117,7 +122,7 @@ static int edma_dma_init(struct edma_cc *ecc) {
 	printk(KERN_INFO "INSIDE edma_dma_init\n");
 	//edma_alloc_chan_resources(ecc);
 
-	ret = edma_alloc_channel(dma_alloc_channel, dma_callback, ecc, EVENTQ_0);
+	ret = edma_alloc_channel(dma_alloc_channel, dma_callback, ecc, EVENTQ_DEFAULT); // was EVENTQ_0
 	if (ret < 0) {
 		printk(KERN_INFO "edma_alloc_channel failed\n");
 		return -EINVAL;
@@ -212,12 +217,18 @@ static int edma_probe(struct platform_device *pdev) {
 
 #ifdef DEBUG
 	printk(KERN_INFO "ecc->kmem_addr_a: %p\n", ecc->kmem_addr_a);
+	printk(KERN_INFO "ecc->kmem_addr_a->src_addr: %08x\n", ecc->kmem_addr_a->src_addr);
+	printk(KERN_INFO "ecc->kmem_addr_a->dst_addr: %08x\n", ecc->kmem_addr_a->dst_addr);
 	printk(KERN_INFO "ecc->kmem_addr_b: %p\n", ecc->kmem_addr_b);
 #endif
 
 	edma_dma_init(ecc);
 
 	platform_set_drvdata(pdev, ecc);
+
+	printk(KERN_INFO "before edma_execute\n");
+	edma_execute(ecc);
+	printk(KERN_INFO "after edma_execute\n");
 
 	ret = edma_start(ecc->slot[0]);
 	printk(KERN_INFO "edma started on channel:%d\n", ecc->slot[0]);
@@ -236,16 +247,15 @@ static int edma_remove(struct platform_device *pdev) {
 
 	printk(KERN_INFO "Freeing all dma_pool memory\n");
 
+	edma_stop(ecc->slot[0]);
+	edma_free_slot(ecc->slot[0]);
+	
 	dma_pool_free(pool_a, &ecc->kmem_addr_a, ecc->dmac_a->dma_handle);
 	dma_pool_free(pool_b, &ecc->kmem_addr_b, ecc->dmac_b->dma_handle);
 	kfree(ecc->dmac_a);
 	kfree(ecc->dmac_b);
 	dma_pool_destroy(pool_a);
 	dma_pool_destroy(pool_b);
-
-	// Disable EDMA
-	edma_stop(ecc->slot[0]);
-	edma_free_slot(ecc->slot[0]);
 
 	return 0;
 }
