@@ -1,7 +1,7 @@
-obj-m += mighty_dma.o
+obj-m += dma_drvr.o
 
 all:
-	make -I /home/ubuntu/am335x_edma/include -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
