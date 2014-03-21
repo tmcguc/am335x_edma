@@ -127,7 +127,7 @@ static int __init edma_test_init(void)
 {
 	int result = 0;
 	int iterations = 0;
-	int numTCs = 4;
+	int numTCs = 2;
 	int modes = 2;
 	int i,j;
 
