@@ -33,7 +33,6 @@
 //#include <asm/hardware/edma.h>
 //#include <mach/memory.h>
 
-/* TODO - set MAJOR/MINOR dynamically */
 #define EBIC_DEV_NAME "mighty_ebic"
 
 //#undef EDMA3_DEBUG
@@ -43,7 +42,7 @@
 #define EBIC
 
 /* Which Sync Mode Do you Require? */
-/* TODO */
+/* TODO - Look at TMC changes in ABsync branch to understand A/AB TM diff */
 
 /* How many bytes do you wish to transfer, in total? */
 #ifdef EBIC
@@ -88,7 +87,7 @@ char *dmabufdest2 = NULL;
 #ifdef EBIC
 static int acnt = 4;		/* FIFO width (32-bit) */
 static int bcnt = 8;		/* FIFO depth */
-static int ccnt = 1;
+static int ccnt = 3;
 #else
 /* original values */
 static int acnt = 512;
@@ -287,7 +286,7 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 		dmabufsrc1[count] = 'A' + (count % 26);
 		dmabufdest1[count] = 0;
 
-		dmabufsrc2[count] = 'A' + (count % 26);
+		dmabufsrc2[count] = 'B' + (count % 26);
 		dmabufdest2[count] = 0;
 	}
 
@@ -299,8 +298,12 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 	desbidx = acnt;
 
 	/* A Sync Transfer Mode */
-	srccidx = acnt;
-	descidx = acnt;
+	//srccidx = acnt;
+	//descidx = acnt;
+
+	/* AB Sync Transfer Mode */
+	srccidx = bcnt * acnt;
+	descidx = bcnt * acnt;
 
 	result = edma_alloc_channel (EDMA_CHANNEL_ANY, callback1, NULL, event_queue);
 
@@ -310,12 +313,11 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 	}
 
 	dma_ch1 = result;
-	edma_set_src (dma_ch1, (unsigned long)(dmaphyssrc1), INCR, W8BIT);
-	edma_set_dest (dma_ch1, (unsigned long)(dmaphysdest1), INCR, W8BIT);
+	edma_set_src (dma_ch1, (unsigned long)(dmaphyssrc1), INCR, W32BIT);
+	edma_set_dest (dma_ch1, (unsigned long)(dmaphysdest1), INCR, W32BIT);
 	edma_set_src_index (dma_ch1, srcbidx, srccidx);
 	edma_set_dest_index (dma_ch1, desbidx, descidx);
-	/* TODO - Change to ABSYNC */
-	edma_set_transfer_params (dma_ch1, acnt, bcnt, ccnt, BRCnt, ASYNC);
+	edma_set_transfer_params (dma_ch1, acnt, bcnt, ccnt, BRCnt, ABSYNC);
 
 	/* Enable the Interrupts on Channel 1 */
 	edma_read_slot (dma_ch1, &param_set);
@@ -333,12 +335,11 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 	}
 
 	dma_ch2 = result;
-	edma_set_src (dma_ch2, (unsigned long)(dmaphyssrc2), INCR, W8BIT);
-	edma_set_dest (dma_ch2, (unsigned long)(dmaphysdest2), INCR, W8BIT);
+	edma_set_src (dma_ch2, (unsigned long)(dmaphyssrc2), INCR, W32BIT);
+	edma_set_dest (dma_ch2, (unsigned long)(dmaphysdest2), INCR, W32BIT);
 	edma_set_src_index (dma_ch2, srcbidx, srccidx);
 	edma_set_dest_index (dma_ch2, desbidx, descidx);
-	/* TODO - Change to ABSYNC */
-	edma_set_transfer_params (dma_ch2, acnt, bcnt, ccnt, BRCnt, ASYNC);
+	edma_set_transfer_params (dma_ch2, acnt, bcnt, ccnt, BRCnt, ABSYNC);
 
 	/* Enable the Interrupts on Channel 2 */
 	edma_read_slot (dma_ch2, &param_set);
@@ -350,7 +351,8 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 	/* Link both the channels */
 	edma_link(dma_ch1, dma_ch2);
 
-	numenabled = bcnt * ccnt;
+	//numenabled = bcnt * ccnt;	/* For A Sync Transfer Mode */
+	numenabled = ccnt;		/* For AB Sync Transfer Mode */
 
 	for (i = 0; i < numenabled; i++) {
 		irqraised1 = 0;
