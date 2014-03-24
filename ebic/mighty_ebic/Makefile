@@ -1,7 +1,7 @@
 obj-m += mighty_dma.o
 
 all:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -C /home/mightydev/BBB/rootfs/lib/modules/3.8.13-bone41/build M=$(PWD) modules
 
 clean:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -C /home/mightydev/BBB/rootfs/lib/modules/3.8.13-bone41/build M=$(PWD) clean
