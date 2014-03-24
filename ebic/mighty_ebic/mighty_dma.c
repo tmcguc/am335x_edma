@@ -13,6 +13,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/types.h>
@@ -31,6 +32,9 @@
 
 //#include <asm/hardware/edma.h>
 //#include <mach/memory.h>
+
+/* TODO - set MAJOR/MINOR dynamically */
+#define EBIC_DEV_NAME "mighty_ebic"
 
 //#undef EDMA3_DEBUG
 #define EDMA3_DEBUG
@@ -92,10 +96,44 @@ static int bcnt = 8;
 static int ccnt = 8;
 #endif
 
-module_param(acnt, int, S_IRUGO);
-module_param(bcnt, int, S_IRUGO);
+static int major;			/* Major Revision for Char Device, Returned by register_chrdev */
+struct file_operations ebic_fops;	/* File Operations to communicate with userland */
+
+module_param(acnt, int, S_IRUGO);	/* Module Parameters allow you to pass them as arguments during insmod */
+module_param(bcnt, int, S_IRUGO);	/* EX: insmod ./mighty_ebic.ko acnt=4, bcnt=8, ccnt=1 */
 module_param(ccnt, int, S_IRUGO);
 
+/* Begin File Operations for Communication with Userland */
+static int ebic_open(struct inode *inode, struct file *file)
+{
+	DMA_PRINTK("successful\n");
+	return 0;
+}
+
+static int ebic_release(struct inode *inode, struct file *file)
+{
+	DMA_PRINTK("successful\n");
+	return 0;
+}
+
+static ssize_t ebic_read(struct file *file, char *buf, size_t count, loff_t *ptr)
+{
+	DMA_PRINTK("returning zero bytes\n");
+	return 0;
+}
+
+static ssize_t ebic_write(struct file *file, const char *buf, size_t count, loff_t * ppos)
+{
+	DMA_PRINTK("accepting zero bytes\n");
+	return 0;
+}
+
+static long ebic_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	printk("cmd=%d, arg=%ld\n", cmd, arg);
+	return 0;
+}
+/* End File Operations for Communication with Userland */
 
 static void callback1(unsigned lch, u16 ch_status, void *data)
 {
@@ -126,6 +164,16 @@ static int __init edma_test_init(void)
 	int i,j;
 
 	printk ("\nInitializing edma_test module\n");
+
+	/* Registering Character Device */
+	/* TODO - #DEFINE name of char device */
+	printk("\nRegistering Character Device\n");
+	major = register_chrdev(0, EBIC_DEV_NAME, &ebic_fops);
+		if (major < 0) {
+			printk("Error registering mighty_ebic device\n");
+			goto ebic_fail;
+		}
+	printk("\nmighty_ebic: registered module successfully!\n");
 
 	DMA_PRINTK ( "\nACNT=%d, BCNT=%d, CCNT=%d", acnt, bcnt, ccnt);
 
@@ -195,6 +243,9 @@ static int __init edma_test_init(void)
 	}
 
 	return result;
+/* If register_chrdev fails: */
+ebic_fail:
+	return major;
 }
 
 
@@ -205,6 +256,10 @@ void edma_test_exit(void)
 
 	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufsrc2, dmaphyssrc2);
 	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufdest2, dmaphysdest2);
+
+	printk("\nUnregistering Driver\n");
+
+	unregister_chrdev(major, "mighty_ebic");
 
 	printk ("\nExiting edma_test module\n");
 }
@@ -389,8 +444,19 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 	return result;
 }
 
+/* File Operations to Communicate with Userland */
+struct file_operations ebic_fops = {
+	owner:	 	THIS_MODULE,
+	read:	 	ebic_read,
+	write:	 	ebic_write,
+	unlocked_ioctl:	ebic_ioctl,
+	open:	 	ebic_open,
+	release: 	ebic_release,
+};
+
 module_init(edma_test_init);
 module_exit(edma_test_exit);
 
 MODULE_AUTHOR("Ephemeron Labs, Inc.");
+MODULE_DESCRIPTION("EDMA3 Driver for the Mighty EBIC Platform");
 MODULE_LICENSE("GPL");
