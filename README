@@ -1,0 +1,7 @@
+
+Since this is a Development Branch of am335x_edma you must install AutoTools (autoconf, automake, libtool)
+and then run "autoreconf" ... execute anything it mentions such as "automake --add-missing" 
+
+email me with questions <q@crypto.com>
+
+

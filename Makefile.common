@@ -1,0 +1,18 @@
+# Makefile.common
+moduledir = @moduledir@
+KERNEL_LOCATION=@kerneldir@
+KBUILD_VERBOSE = 1
+MOD_DEVDIR = $(PWD)
+
+export module_DATA
+
+$(module_DATA): $(automake_dummy_SOURCES) 
+	mv Makefile Makefile.automake 
+	cp $(srcdir)/../../Makefile.kernel Makefile 
+	CPPFLAGS="" CFLAGS="" LDFLAGS="" \
+	$(MAKE) -C /lib/modules/$(shell uname -r)/build \
+        ARCH="arm" CC="gcc" M=$(PWD) modules\
+		KBUILD_VERBOSE=$(KBUILD_VERBOSE) 
+	mv Makefile.automake Makefile 
+
+CLEANFILES = $(module_DATA) .$(module_DATA).flags $(module_DATA:.o=.mod.c) $(module_DATA:.o=.@kernelext@) *.ko *~

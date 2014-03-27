@@ -1,0 +1,7 @@
+#  Makefile.kernel
+obj-m=$(module_DATA)
+MI_OBJS      = $(module_DATA)
+
+all clean:
+	mv Makefile.automake Makefile
+	$(MAKE) $@
