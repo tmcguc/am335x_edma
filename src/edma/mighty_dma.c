@@ -460,7 +460,6 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	int count = 0;
 	//unsigned int Istestpassed1 = 0u;
 	//unsigned int Istestpassed2 = 0u;
-	unsigned int numenabled = 0;
 	unsigned int BRCnt = 0;
 	int srcbidx = 0;
 	int desbidx = 0;
@@ -536,9 +535,8 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 	/* Link both the channels */
 	edma_link(dma_ch1, dma_ch2);
+	edma_link(dma_ch2, dma_ch1);
 
-	//numenabled = bcnt * ccnt;	/* For A Sync Transfer Mode */
-	numenabled = ccnt;		/* For AB Sync Transfer Mode */
 
 	result = edma_start(dma_ch1);
 	if (result != 0) {
