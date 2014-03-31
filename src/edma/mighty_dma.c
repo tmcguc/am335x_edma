@@ -72,6 +72,8 @@ static volatile int irqraised1 = 0;
 static volatile int irqraised2 = 0;
 
 int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, int event_queue);
+int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, int event_queue);
+
 
 dma_addr_t dmaphyssrc1 = 0;
 dma_addr_t dmaphyssrc2 = 0;
@@ -240,6 +242,8 @@ static int __init edma_test_init(void)
 			}
 		}
 	}
+	
+	result = edma3_fifotomemcpytest_dma_link(acnt,bcnt,ccnt,1,1);	
 
 	return result;
 /* If register_chrdev fails: */
@@ -445,6 +449,109 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 
 	return result;
 }
+
+/* 2 DMA Channels Linked, FIFO-2-Mem Copy, ABSYNC Mode, INCR Mode */
+int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, int event_queue)
+{
+	int result = 0;
+	unsigned int dma_ch1 = 0;
+	unsigned int dma_ch2 = 0;
+	int i;
+	int count = 0;
+	//unsigned int Istestpassed1 = 0u;
+	//unsigned int Istestpassed2 = 0u;
+	unsigned int numenabled = 0;
+	unsigned int BRCnt = 0;
+	int srcbidx = 0;
+	int desbidx = 0;
+	int srccidx = 0;
+	int descidx = 0;
+	int src_ch = 17;			//TODO: should be passed or is setup as DEFINE
+	unsigned long spi_fifo = 0x480301a0;   //TODO: should paas this value or set up as DEFINE 
+
+	struct edmacc_param param_set;
+
+	/* Initalize source and destination buffers */
+	/*grabbing from FIFO no need to initialize with data*/
+	for (count = 0u; count < (acnt*bcnt*ccnt); count++) {
+		dmabufdest1[count] = 0;
+
+		dmabufdest2[count] = 0;
+	}
+
+	/* Set B count reload as B count. */
+	BRCnt = bcnt;
+
+	/* Setting up the SRC/DES Index */
+	srcbidx = 0;
+	desbidx = acnt;
+
+
+	/* AB Sync Transfer Mode */
+	srccidx = 0;
+	descidx = bcnt * acnt;
+
+	result = edma_alloc_channel (src_ch, callback1, NULL, event_queue);
+
+	if (result < 0) {
+		DMA_PRINTK ("edma3_fifotomemcpytest_dma_link::edma_alloc_channel failed for dma_ch1, error:%d\n", result);
+		return result;
+	}
+
+	dma_ch1 = result;
+	edma_set_src (dma_ch1, spi_fifo, FIFO, W32BIT); // need to put in addres of FIFO
+	edma_set_dest (dma_ch1, (unsigned long)(dmaphysdest1), INCR, W32BIT);
+	edma_set_src_index (dma_ch1, srcbidx, srccidx);
+	edma_set_dest_index (dma_ch1, desbidx, descidx);
+	edma_set_transfer_params (dma_ch1, acnt, bcnt, ccnt, BRCnt, ABSYNC);
+
+	/* Enable the Interrupts on Channel 1 */
+	edma_read_slot (dma_ch1, &param_set);
+	param_set.opt |= (1 << ITCINTEN_SHIFT);
+	param_set.opt |= (1 << TCINTEN_SHIFT);
+	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch1));
+	edma_write_slot(dma_ch1, &param_set);
+
+	/* Request a Link Channel */
+	result = edma_alloc_slot (0, EDMA_SLOT_ANY);  //grab link channel
+
+	if (result < 0) {
+		DMA_PRINTK ("\nedma3_fifotomemcpytest_dma_link::edma_alloc_slot failed for dma_ch2, error:%d\n", result);
+		return result;
+	}
+
+	dma_ch2 = result;
+	edma_set_src (dma_ch2, spi_fifo, FIFO, W32BIT); // change to same src
+	edma_set_dest (dma_ch2, (unsigned long)(dmaphysdest2), INCR, W32BIT);
+	edma_set_src_index (dma_ch2, srcbidx, srccidx);
+	edma_set_dest_index (dma_ch2, desbidx, descidx);
+	edma_set_transfer_params (dma_ch2, acnt, bcnt, ccnt, BRCnt, ABSYNC);
+
+	/* Enable the Interrupts on Channel 2 */
+	edma_read_slot (dma_ch2, &param_set);
+	param_set.opt |= (1 << ITCINTEN_SHIFT);
+	param_set.opt |= (1 << TCINTEN_SHIFT);
+	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch1));
+	edma_write_slot(dma_ch2, &param_set);
+
+	/* Link both the channels */
+	edma_link(dma_ch1, dma_ch2);
+
+	//numenabled = bcnt * ccnt;	/* For A Sync Transfer Mode */
+	numenabled = ccnt;		/* For AB Sync Transfer Mode */
+
+	result = edma_start(dma_ch1);
+	if (result != 0) {
+		DMA_PRINTK ("edma3_fifotomemcpytest_dma_link: davinci_start_dma failed \n");
+	}
+
+
+
+	return result;
+}
+
+
+
 
 /* File Operations to Communicate with Userland */
 struct file_operations ebic_fops = {
