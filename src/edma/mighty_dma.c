@@ -73,7 +73,11 @@ static volatile int irqraised2 = 0;
 
 int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, int event_queue);
 int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, int event_queue);
-
+static int stop_ping_pong(int *ch, int *slot);
+int ch = 17;
+int slot;
+int *ch_ptr = &ch;
+int *slot_ptr = &slot; 
 
 dma_addr_t dmaphyssrc1 = 0;
 dma_addr_t dmaphyssrc2 = 0;
@@ -84,6 +88,7 @@ char *dmabufsrc1 = NULL;
 char *dmabufsrc2 = NULL;
 char *dmabufdest1 = NULL;
 char *dmabufdest2 = NULL;
+
 
 /* EBIC values */
 #ifdef EBIC
@@ -108,7 +113,7 @@ module_param(ccnt, int, S_IRUGO);
 static int ebic_open(struct inode *inode, struct file *file)
 {
 	DMA_PRINTK("successful\n");
-	return 0;
+		return 0;
 }
 
 static int ebic_release(struct inode *inode, struct file *file)
@@ -141,8 +146,8 @@ static void callback1(unsigned lch, u16 ch_status, void *data)
 	switch(ch_status) {
 	case DMA_COMPLETE:
 		irqraised1 = 1;
-		/*DMA_PRINTK ("\n From Callback 1: Channel %d status is: %u\n",lch, ch_status);*/
-		break;
+		DMA_PRINTK ("\n From Callback 1: Channel %d status is: %u\n",lch, ch_status); //TM added this back in to understand when callback is called can 
+		break;										// TODO use callabck put data into proper buffer, incrment a counter etc...
 	case DMA_CC_ERROR:
 		irqraised1 = -1;
 		DMA_PRINTK ("\nFrom Callback 1: DMA_CC_ERROR occured on Channel %d\n", lch);
@@ -150,6 +155,7 @@ static void callback1(unsigned lch, u16 ch_status, void *data)
 	default:
 		break;
 	}
+
 }
 
 static int __init edma_test_init(void)
@@ -220,7 +226,7 @@ static int __init edma_test_init(void)
 	}
 
 	/* Test Routine */
-	for (iterations = 0 ; iterations < 10 ; iterations++) {
+	for (iterations = 0 ; iterations < 5 ; iterations++) {
 		DMA_PRINTK ("Iteration = %d\n", iterations);
 
 		for (j = 0 ; j < numTCs ; j++) { //TC
@@ -243,7 +249,8 @@ static int __init edma_test_init(void)
 		}
 	}
 	
-	result = edma3_fifotomemcpytest_dma_link(acnt,bcnt,ccnt,1,1);	
+	result = edma3_fifotomemcpytest_dma_link(acnt,bcnt,ccnt,1,1);
+	//result = stop_ping_pong(&ch, &slot);	
 
 	return result;
 /* If register_chrdev fails: */
@@ -254,6 +261,8 @@ ebic_fail:
 
 void edma_test_exit(void)
 {
+	stop_ping_pong (&ch, &slot);
+
 	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufsrc1, dmaphyssrc1);
 	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufdest1, dmaphysdest1);
 
@@ -370,6 +379,7 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 			break;
 		}
 
+
 		/* Wait for the Completion ISR. */
 		while (irqraised1 == 0u);
 
@@ -450,22 +460,21 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 	return result;
 }
 
-/* 2 DMA Channels Linked, FIFO-2-Mem Copy, ABSYNC Mode, INCR Mode */
-int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, int event_queue)
+/* 2 DMA Channels Linked to each other, FIFO-2-Mem Copy, ABSYNC Mode, FIFO Mode, Ping Pong buffering scheme */
+/*TODO: get rid of sync mode it doesn't do anything in the tests */
+/*TODO: pass channel and FIFO address to function*/
+int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, int event_queue) 
 {
 	int result = 0;
 	unsigned int dma_ch1 = 0;
 	unsigned int dma_ch2 = 0;
-	int i;
 	int count = 0;
-	//unsigned int Istestpassed1 = 0u;
-	//unsigned int Istestpassed2 = 0u;
 	unsigned int BRCnt = 0;
 	int srcbidx = 0;
 	int desbidx = 0;
 	int srccidx = 0;
 	int descidx = 0;
-	int src_ch = 17;			//TODO: should be passed or is setup as DEFINE
+	//int src_ch = 17;			//TODO: should be passed or is setup as DEFINE
 	unsigned long spi_fifo = 0x480301a0;   //TODO: should paas this value or set up as DEFINE 
 
 	struct edmacc_param param_set;
@@ -477,6 +486,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 		dmabufdest2[count] = 0;
 	}
+
 
 	/* Set B count reload as B count. */
 	BRCnt = bcnt;
@@ -490,7 +500,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	srccidx = 0;
 	descidx = bcnt * acnt;
 
-	result = edma_alloc_channel (src_ch, callback1, NULL, event_queue);
+	result = edma_alloc_channel (ch, callback1, NULL, event_queue);  //TODO: write our own callback function that adds more functionality
 
 	if (result < 0) {
 		DMA_PRINTK ("edma3_fifotomemcpytest_dma_link::edma_alloc_channel failed for dma_ch1, error:%d\n", result);
@@ -498,6 +508,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	}
 
 	dma_ch1 = result;
+	*ch_ptr = result; //Make sure we keep the same info on the channel TM
 	edma_set_src (dma_ch1, spi_fifo, FIFO, W32BIT); // need to put in addres of FIFO
 	edma_set_dest (dma_ch1, (unsigned long)(dmaphysdest1), INCR, W32BIT);
 	edma_set_src_index (dma_ch1, srcbidx, srccidx);
@@ -520,6 +531,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	}
 
 	dma_ch2 = result;
+	*slot_ptr = dma_ch2;
 	edma_set_src (dma_ch2, spi_fifo, FIFO, W32BIT); // change to same src
 	edma_set_dest (dma_ch2, (unsigned long)(dmaphysdest2), INCR, W32BIT);
 	edma_set_src_index (dma_ch2, srcbidx, srccidx);
@@ -543,11 +555,18 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 		DMA_PRINTK ("edma3_fifotomemcpytest_dma_link: davinci_start_dma failed \n");
 	}
 
-
-
 	return result;
 }
 
+
+static int stop_ping_pong(int *ch, int *slot){
+
+	edma_stop(*ch);
+	edma_free_channel(*ch);
+	edma_free_slot(*slot);
+	DMA_PRINTK ("Stoped channels and freed them");
+	return 0;
+}
 
 
 
