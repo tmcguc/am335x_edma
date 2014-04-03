@@ -103,7 +103,7 @@ char *dmabufdest2 = NULL;
 #ifdef EBIC
 static int acnt = 4;		/* FIFO width (32-bit) */
 static int bcnt = 8;		/* FIFO depth */
-static int ccnt = 3;
+static int ccnt = 2;
 #else
 /* original values */
 static int acnt = 512;
@@ -169,6 +169,7 @@ static void callback1(unsigned lch, u16 ch_status, void *data)
 
 static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 {
+	//TODO check the status of IPR registers may need to manually reset these!!
 	switch(ch_status) {
 	case DMA_COMPLETE:
 		irqraised1 = 1;
@@ -188,7 +189,7 @@ static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 			}
 			else if(ping == 0){
 				DMA_PRINTK ("\nTransfer from Pong: ccnt_counter is %d transfer_counter is: %d", ccnt_counter, transfer_counter);
-				ping = 0;
+				ping = 1;
 				ccnt_counter = 0;
 				break;
 			}	
@@ -508,6 +509,8 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 }
 
 
+
+
 /* 2 DMA Channels Linked to each other, FIFO-2-Mem Copy, ABSYNC Mode, FIFO Mode, Ping Pong buffering scheme */
 /*TODO: get rid of sync mode it doesn't do anything in the tests */
 /*TODO: pass channel and FIFO address to function*/
@@ -516,6 +519,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	int result = 0;
 	unsigned int dma_ch1 = 0;
 	unsigned int dma_ch2 = 0;
+	unsigned int dma_slot1 = 0;
 	int count = 0;
 	unsigned int BRCnt = 0;
 	int srcbidx = 0;
@@ -537,7 +541,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 
 	/* Set B count reload as B count. */
-	BRCnt = bcnt;
+	BRCnt = bcnt; //changed from bcnt may not affect anything
 
 	/* Setting up the SRC/DES Index */
 	srcbidx = 0;
@@ -548,7 +552,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	srccidx = 0;
 	descidx = bcnt * acnt;
 
-	result = edma_alloc_channel (ch, callback_pingpong, NULL, event_queue);  //TODO: write our own callback function that adds more functionality
+	result = edma_alloc_channel (ch, callback1, NULL, event_queue);  //TODO: write our own callback function that adds more functionality
 
 	if (result < 0) {
 		DMA_PRINTK ("edma3_fifotomemcpytest_dma_link::edma_alloc_channel failed for dma_ch1, error:%d\n", result);
@@ -557,18 +561,17 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 	dma_ch1 = result;
 	*ch_ptr = result; //Make sure we keep the same info on the channel TM
-	edma_set_src (dma_ch1, spi_fifo, FIFO, W32BIT); // need to put in addres of FIFO
-	edma_set_dest (dma_ch1, (unsigned long)(dmaphysdest1), INCR, W32BIT);
-	edma_set_src_index (dma_ch1, srcbidx, srccidx);
-	edma_set_dest_index (dma_ch1, desbidx, descidx);
-	edma_set_transfer_params (dma_ch1, acnt, bcnt, ccnt, BRCnt, ABSYNC);
 
-	/* Enable the Interrupts on Channel 1 */
-	edma_read_slot (dma_ch1, &param_set);
-	param_set.opt |= (1 << ITCINTEN_SHIFT);
-	param_set.opt |= (1 << TCINTEN_SHIFT);
-	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch1));
-	edma_write_slot(dma_ch1, &param_set);
+ 
+	/* Request a Link Channel */
+	result = edma_alloc_slot (0, EDMA_SLOT_ANY);  //grab link channel
+
+	if (result < 0) {
+		DMA_PRINTK ("\nedma3_fifotomemcpytest_dma_link::edma_alloc_slot failed for dma_ch2, error:%d\n", result);
+		return result;
+	}
+	dma_slot1 = result;
+	*slot_ptr = dma_slot1;
 
 	/* Request a Link Channel */
 	result = edma_alloc_slot (0, EDMA_SLOT_ANY);  //grab link channel
@@ -579,7 +582,44 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	}
 
 	dma_ch2 = result;
-	*slot_ptr = dma_ch2;
+	//*slot_ptr = dma_ch2;
+
+
+	/* Link both the channels */
+	edma_link(dma_ch1, dma_slot1);   // tried just linking the slots
+	edma_link(dma_slot1, dma_slot1);   // tried just linking the slots
+	//edma_link(dma_ch2, dma_ch1);  // TODO figure out why this only works once thens fails
+
+
+	edma_set_src (dma_ch1, spi_fifo, FIFO, W32BIT); // need to put in addres of FIFO
+	edma_set_dest (dma_ch1, (unsigned long)(dmaphysdest1), INCR, W32BIT);
+	edma_set_src_index (dma_ch1, srcbidx, srccidx);
+	edma_set_dest_index (dma_ch1, desbidx, descidx);
+	edma_set_transfer_params (dma_ch1, acnt, bcnt, ccnt, BRCnt, ABSYNC);
+
+	/* Enable the Interrupts on Channel 1 */
+	edma_read_slot (dma_ch1, &param_set);
+	//param_set.opt &= ~(1 << ITCINTEN_SHIFT | 1 << STATIC_SHIFT | 1 << TCCHEN_SHIFT | 1 << ITCCHEN_SHIFT );  // Changed so it only triggers after ping or pong is full TM
+	param_set.opt |= (1 << TCINTEN_SHIFT); // | 1 << TCCHEN_SHIFT); did not like this
+	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch1));
+	edma_write_slot(dma_ch1, &param_set);
+	DMA_PRINTK("\n opt for ch %u", param_set.opt); 
+
+
+
+	//Test to see if we can get CCNT to remain the same
+	edma_set_src (dma_slot1, spi_fifo, FIFO, W32BIT); // need to put in addres of FIFO
+	edma_set_dest (dma_slot1, (unsigned long)(dmaphysdest1), INCR, W32BIT);
+	edma_set_src_index (dma_slot1, srcbidx, srccidx);
+	edma_set_dest_index (dma_slot1, desbidx, descidx);
+	edma_set_transfer_params (dma_slot1, acnt, bcnt, ccnt, BRCnt, ABSYNC);
+
+
+	edma_write_slot(dma_slot1, &param_set);
+	
+
+
+
 	edma_set_src (dma_ch2, spi_fifo, FIFO, W32BIT); // change to same src
 	edma_set_dest (dma_ch2, (unsigned long)(dmaphysdest2), INCR, W32BIT);
 	edma_set_src_index (dma_ch2, srcbidx, srccidx);
@@ -588,14 +628,15 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 	/* Enable the Interrupts on Channel 2 */
 	edma_read_slot (dma_ch2, &param_set);
-	param_set.opt |= (1 << ITCINTEN_SHIFT);
-	param_set.opt |= (1 << TCINTEN_SHIFT);
-	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch1));
+	//param_set.opt &= ~(1 << ITCINTEN_SHIFT | 1 << STATIC_SHIFT | 1 << TCINTEN_SHIFT | 1 << ITCCHEN_SHIFT);  //Same here TM
+	param_set.opt |= (1 << TCINTEN_SHIFT); // | 1 << TCCHEN_SHIFT);
+	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch1)); // This May be key
 	edma_write_slot(dma_ch2, &param_set);
+	DMA_PRINTK("\n opt for link%u slot %u",dma_ch2, param_set.opt); 
 
 	/* Link both the channels */
-	edma_link(dma_ch1, dma_ch2);
-	edma_link(dma_ch2, dma_ch1);
+	//edma_link(dma_ch1, dma_ch2);
+	//edma_link(dma_ch2, dma_ch1);  // TODO figure out why this only works once thens fails
 
 
 	result = edma_start(dma_ch1);
