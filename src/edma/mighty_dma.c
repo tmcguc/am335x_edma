@@ -6,6 +6,7 @@
  *   this is not a general-purpose EDMA driver
  * 
  *   Andrew Righter <q@crypto.com>
+ *   Terrence McGuckin <terrence@ephemeron-labs.com>
  *	for Ephemeron-Labs, Inc.
  *
  *   TODO - Enable users to easily switch between ASYNC and ABSYNC modes (edma_set_transfer_parameters)
@@ -46,7 +47,7 @@
 
 /* How many bytes do you wish to transfer, in total? */
 #ifdef EBIC
-#define MAX_DMA_TRANSFER_IN_BYTES   (32)	/* EBIC test values (ACNT*BCNT*CCNT) */
+#define MAX_DMA_TRANSFER_IN_BYTES   (32768)	/* Don't need two of these defines in the future */
 #else
 #define MAX_DMA_TRANSFER_IN_BYTES   (32768)     /* Original TI EDMA Sample Values */
 #endif
@@ -73,11 +74,19 @@ static volatile int irqraised2 = 0;
 
 int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, int event_queue);
 int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, int event_queue);
+
+/*Added by TM variables for keeping tracking of wether we are on  ping and pong and status of transfer    */
 static int stop_ping_pong(int *ch, int *slot);
 int ch = 17;
 int slot;
 int *ch_ptr = &ch;
-int *slot_ptr = &slot; 
+int *slot_ptr = &slot;
+/*Transfer counter*/
+unsigned int transfer_counter = 0;
+int ping = 1;
+int ccnt_counter = 0;
+
+
 
 dma_addr_t dmaphyssrc1 = 0;
 dma_addr_t dmaphyssrc2 = 0;
@@ -147,7 +156,7 @@ static void callback1(unsigned lch, u16 ch_status, void *data)
 	case DMA_COMPLETE:
 		irqraised1 = 1;
 		DMA_PRINTK ("\n From Callback 1: Channel %d status is: %u\n",lch, ch_status); //TM added this back in to understand when callback is called can 
-		break;										// TODO use callabck put data into proper buffer, incrment a counter etc...
+		break;										
 	case DMA_CC_ERROR:
 		irqraised1 = -1;
 		DMA_PRINTK ("\nFrom Callback 1: DMA_CC_ERROR occured on Channel %d\n", lch);
@@ -157,6 +166,44 @@ static void callback1(unsigned lch, u16 ch_status, void *data)
 	}
 
 }
+
+static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
+{
+	switch(ch_status) {
+	case DMA_COMPLETE:
+		irqraised1 = 1;
+		DMA_PRINTK ("\n From Callback PingPong: Channel %d status is: %u\n",lch, ch_status); // TODO use callabck put data into proper buffer, incrment a counter etc...
+		++transfer_counter;
+		++ccnt_counter;
+		if(ccnt_counter < ccnt){
+			break;
+		} 
+		else if(ccnt_counter == ccnt){
+			if(ping == 1){
+				DMA_PRINTK ("\nTransfer from Ping: ccnt_counter is %d transfer_counter is: %d", ccnt_counter, transfer_counter); 
+				//TODO add in functionality to trnafer to mmap buffer notfiy userland
+				ping = 0;
+				ccnt_counter = 0;
+				break;
+			}
+			else if(ping == 0){
+				DMA_PRINTK ("\nTransfer from Pong: ccnt_counter is %d transfer_counter is: %d", ccnt_counter, transfer_counter);
+				ping = 0;
+				ccnt_counter = 0;
+				break;
+			}	
+		}else	
+			break;										
+	case DMA_CC_ERROR:
+		irqraised1 = -1;
+		DMA_PRINTK ("\nFrom Callback Ping : DMA_CC_ERROR occured on Channel %d\n", lch);
+		break;
+	default:
+		break;
+	}
+
+}
+
 
 static int __init edma_test_init(void)
 {
@@ -460,6 +507,7 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 	return result;
 }
 
+
 /* 2 DMA Channels Linked to each other, FIFO-2-Mem Copy, ABSYNC Mode, FIFO Mode, Ping Pong buffering scheme */
 /*TODO: get rid of sync mode it doesn't do anything in the tests */
 /*TODO: pass channel and FIFO address to function*/
@@ -500,7 +548,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	srccidx = 0;
 	descidx = bcnt * acnt;
 
-	result = edma_alloc_channel (ch, callback1, NULL, event_queue);  //TODO: write our own callback function that adds more functionality
+	result = edma_alloc_channel (ch, callback_pingpong, NULL, event_queue);  //TODO: write our own callback function that adds more functionality
 
 	if (result < 0) {
 		DMA_PRINTK ("edma3_fifotomemcpytest_dma_link::edma_alloc_channel failed for dma_ch1, error:%d\n", result);
