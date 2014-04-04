@@ -76,11 +76,14 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, int event_queue);
 
 /*Added by TM variables for keeping tracking of wether we are on  ping and pong and status of transfer    */
-static int stop_ping_pong(int *ch, int *slot);
+static int stop_ping_pong(int *ch, int *slot1, int *slot2);
 int ch = 17;
-int slot;
+int slot1;
+int slot2;
 int *ch_ptr = &ch;
-int *slot_ptr = &slot;
+int *slot1_ptr = &slot1;
+int *slot2_ptr = &slot2;
+
 /*Transfer counter*/
 unsigned int transfer_counter = 0;
 int ping = 1;
@@ -309,7 +312,7 @@ ebic_fail:
 
 void edma_test_exit(void)
 {
-	stop_ping_pong (&ch, &slot);
+	stop_ping_pong (&ch, &slot1, &slot2);
 
 	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufsrc1, dmaphyssrc1);
 	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufdest1, dmaphysdest1);
@@ -518,8 +521,9 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 {
 	int result = 0;
 	unsigned int dma_ch1 = 0;
-	unsigned int dma_ch2 = 0;
+	//unsigned int dma_ch2 = 0;
 	unsigned int dma_slot1 = 0;
+	unsigned int dma_slot2 = 0;
 	int count = 0;
 	unsigned int BRCnt = 0;
 	int srcbidx = 0;
@@ -527,7 +531,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	int srccidx = 0;
 	int descidx = 0;
 	//int src_ch = 17;			//TODO: should be passed or is setup as DEFINE
-	unsigned long spi_fifo = 0x480301a0;   //TODO: should paas this value or set up as DEFINE 
+	unsigned long spi_fifo = 0x480301a0;   //TODO: should paas this value or set up as DEFINE this is for channel 17 SPI0RX DMA aligned FIFO
 
 	struct edmacc_param param_set;
 
@@ -552,43 +556,43 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	srccidx = 0;
 	descidx = bcnt * acnt;
 
-	result = edma_alloc_channel (ch, callback1, NULL, event_queue);  //TODO: write our own callback function that adds more functionality
+/* GRAB all the channels and slots we need for liniking ping pong buffers and circling them*/
 
+
+	result = edma_alloc_channel (ch, callback1, NULL, event_queue);  //TODO: write our own callback function that adds more functionality
 	if (result < 0) {
 		DMA_PRINTK ("edma3_fifotomemcpytest_dma_link::edma_alloc_channel failed for dma_ch1, error:%d\n", result);
 		return result;
 	}
-
 	dma_ch1 = result;
 	*ch_ptr = result; //Make sure we keep the same info on the channel TM
 
  
-	/* Request a Link Channel */
+	/* Request a Link Channel for slot1 */
 	result = edma_alloc_slot (0, EDMA_SLOT_ANY);  //grab link channel
-
 	if (result < 0) {
 		DMA_PRINTK ("\nedma3_fifotomemcpytest_dma_link::edma_alloc_slot failed for dma_ch2, error:%d\n", result);
 		return result;
 	}
 	dma_slot1 = result;
-	*slot_ptr = dma_slot1;
+	*slot1_ptr = dma_slot1;
 
-	/* Request a Link Channel */
+
+
+	/* Request a Link Channel for slot2*/
 	result = edma_alloc_slot (0, EDMA_SLOT_ANY);  //grab link channel
-
 	if (result < 0) {
 		DMA_PRINTK ("\nedma3_fifotomemcpytest_dma_link::edma_alloc_slot failed for dma_ch2, error:%d\n", result);
 		return result;
 	}
+	dma_slot2 = result;
+	*slot2_ptr = dma_slot2;
 
-	dma_ch2 = result;
-	//*slot_ptr = dma_ch2;
 
-
-	/* Link both the channels */
-	edma_link(dma_ch1, dma_slot1);   // tried just linking the slots
-	edma_link(dma_slot1, dma_slot1);   // tried just linking the slots
-	//edma_link(dma_ch2, dma_ch1);  // TODO figure out why this only works once thens fails
+	/* Link the channel and the two slots needed for continous operation*/
+	edma_link(dma_ch1, dma_slot2);   // channel reloads param from slot2 goes to pong
+	edma_link(dma_slot2, dma_slot1);   // param in slot2 will reload from slot1
+	edma_link(dma_slot1, dma_slot2);  // slot1 will reload from slot2
 
 
 	edma_set_src (dma_ch1, spi_fifo, FIFO, W32BIT); // need to put in addres of FIFO
@@ -606,7 +610,6 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	DMA_PRINTK("\n opt for ch %u", param_set.opt); 
 
 
-
 	//Test to see if we can get CCNT to remain the same
 	edma_set_src (dma_slot1, spi_fifo, FIFO, W32BIT); // need to put in addres of FIFO
 	edma_set_dest (dma_slot1, (unsigned long)(dmaphysdest1), INCR, W32BIT);
@@ -614,29 +617,25 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 	edma_set_dest_index (dma_slot1, desbidx, descidx);
 	edma_set_transfer_params (dma_slot1, acnt, bcnt, ccnt, BRCnt, ABSYNC);
 
-
 	edma_write_slot(dma_slot1, &param_set);
 	
 
 
 
-	edma_set_src (dma_ch2, spi_fifo, FIFO, W32BIT); // change to same src
-	edma_set_dest (dma_ch2, (unsigned long)(dmaphysdest2), INCR, W32BIT);
-	edma_set_src_index (dma_ch2, srcbidx, srccidx);
-	edma_set_dest_index (dma_ch2, desbidx, descidx);
-	edma_set_transfer_params (dma_ch2, acnt, bcnt, ccnt, BRCnt, ABSYNC);
+	edma_set_src (dma_slot2, spi_fifo, FIFO, W32BIT); // change to same src
+	edma_set_dest (dma_slot2, (unsigned long)(dmaphysdest2), INCR, W32BIT);
+	edma_set_src_index (dma_slot2, srcbidx, srccidx);
+	edma_set_dest_index (dma_slot2, desbidx, descidx);
+	edma_set_transfer_params (dma_slot2, acnt, bcnt, ccnt, BRCnt, ABSYNC);
 
 	/* Enable the Interrupts on Channel 2 */
-	edma_read_slot (dma_ch2, &param_set);
+	edma_read_slot (dma_slot2, &param_set);
 	//param_set.opt &= ~(1 << ITCINTEN_SHIFT | 1 << STATIC_SHIFT | 1 << TCINTEN_SHIFT | 1 << ITCCHEN_SHIFT);  //Same here TM
 	param_set.opt |= (1 << TCINTEN_SHIFT); // | 1 << TCCHEN_SHIFT);
 	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch1)); // This May be key
-	edma_write_slot(dma_ch2, &param_set);
-	DMA_PRINTK("\n opt for link%u slot %u",dma_ch2, param_set.opt); 
+	edma_write_slot(dma_slot2, &param_set);
+	DMA_PRINTK("\n opt for link%u slot %u",dma_slot2, param_set.opt); 
 
-	/* Link both the channels */
-	//edma_link(dma_ch1, dma_ch2);
-	//edma_link(dma_ch2, dma_ch1);  // TODO figure out why this only works once thens fails
 
 
 	result = edma_start(dma_ch1);
@@ -648,11 +647,12 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 }
 
 
-static int stop_ping_pong(int *ch, int *slot){
+static int stop_ping_pong(int *ch, int *slot1, int *slot2){
 
 	edma_stop(*ch);
 	edma_free_channel(*ch);
-	edma_free_slot(*slot);
+	edma_free_slot(*slot1);
+	edma_free_slot(*slot2);
 	DMA_PRINTK ("Stoped channels and freed them");
 	return 0;
 }
