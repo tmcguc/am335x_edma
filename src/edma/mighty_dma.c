@@ -87,7 +87,8 @@ int *slot2_ptr = &slot2;
 /*Transfer counter*/
 unsigned int transfer_counter = 0;
 int ping = 1;
-int ccnt_counter = 0;
+int ping_counter = 0;
+int pong_counter = 0;
 
 
 
@@ -176,31 +177,27 @@ static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 	switch(ch_status) {
 	case DMA_COMPLETE:
 		irqraised1 = 1;
-		DMA_PRINTK ("\n From Callback PingPong: Channel %d status is: %u\n",lch, ch_status); // TODO use callabck put data into proper buffer, incrment a counter etc...
+		DMA_PRINTK ("\n From Callback PingPong: Channel %d status is: %u\n",lch, ch_status); 
+		// TODO use callabck put data into proper buffer, incrment a counter etc...
 		++transfer_counter;
-		++ccnt_counter;
-		if(ccnt_counter < ccnt){
+		if(ping == 1){
+			++ping_counter;
+			DMA_PRINTK ("\nTransfer from Ping: ping_counter is %d transfer_counter is: %d", ping_counter, transfer_counter); 
+			//TODO add in functionality to trnafer to mmap buffer notfiy userland
+			ping = 0;
 			break;
-		} 
-		else if(ccnt_counter == ccnt){
-			if(ping == 1){
-				DMA_PRINTK ("\nTransfer from Ping: ccnt_counter is %d transfer_counter is: %d", ccnt_counter, transfer_counter); 
-				//TODO add in functionality to trnafer to mmap buffer notfiy userland
-				ping = 0;
-				ccnt_counter = 0;
-				break;
-			}
-			else if(ping == 0){
-				DMA_PRINTK ("\nTransfer from Pong: ccnt_counter is %d transfer_counter is: %d", ccnt_counter, transfer_counter);
-				ping = 1;
-				ccnt_counter = 0;
-				break;
-			}	
-		}else	
+		}
+		else if(ping == 0){
+			++pong_counter;
+			DMA_PRINTK ("\nTransfer from Pong: pong_counter is %d transfer_counter is: %d", pong_counter, transfer_counter);
+			ping = 1;
+			break;
+		}	
+		else	
 			break;										
 	case DMA_CC_ERROR:
 		irqraised1 = -1;
-		DMA_PRINTK ("\nFrom Callback Ping : DMA_CC_ERROR occured on Channel %d\n", lch);
+		DMA_PRINTK ("\nFrom Callback PingPong : DMA_CC_ERROR occured on Channel %d\n", lch);
 		break;
 	default:
 		break;
@@ -558,8 +555,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 /* GRAB all the channels and slots we need for liniking ping pong buffers and circling them*/
 
-
-	result = edma_alloc_channel (ch, callback1, NULL, event_queue);  //TODO: write our own callback function that adds more functionality
+	result = edma_alloc_channel (ch, callback_pingpong, NULL, event_queue);  //TODO: write our own callback function that adds more functionality
 	if (result < 0) {
 		DMA_PRINTK ("edma3_fifotomemcpytest_dma_link::edma_alloc_channel failed for dma_ch1, error:%d\n", result);
 		return result;
@@ -603,7 +599,8 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 	/* Enable the Interrupts on Channel 1 */
 	edma_read_slot (dma_ch1, &param_set);
-	//param_set.opt &= ~(1 << ITCINTEN_SHIFT | 1 << STATIC_SHIFT | 1 << TCCHEN_SHIFT | 1 << ITCCHEN_SHIFT );  // Changed so it only triggers after ping or pong is full TM
+	//param_set.opt &= ~(1 << ITCINTEN_SHIFT | 1 << STATIC_SHIFT | 1 << TCCHEN_SHIFT | 1 << ITCCHEN_SHIFT );  
+	//// Changed so it only triggers after ping or pong is full TM
 	param_set.opt |= (1 << TCINTEN_SHIFT); // | 1 << TCCHEN_SHIFT); did not like this
 	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch1));
 	edma_write_slot(dma_ch1, &param_set);
