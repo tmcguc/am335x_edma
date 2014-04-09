@@ -15,6 +15,7 @@
 
 #include <linux/module.h>
 #include <linux/fs.h>
+#include <linux/cdev.h>
 #include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/types.h>
@@ -24,6 +25,7 @@
 #include <linux/sysctl.h>
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
+#include <linux/cdev.h>  // Added by TM
 
 #include <mach/hardware.h>
 #include <mach/irqs.h>
@@ -68,6 +70,7 @@
 #define ITCINTEN_SHIFT              21
 #define TCCHEN_SHIFT                22
 #define ITCCHEN_SHIFT               23
+#define MAJOR_NUMBER_MIGHTY	    0
 
 static volatile int irqraised1 = 0;
 static volatile int irqraised2 = 0;
@@ -115,12 +118,27 @@ static int bcnt = 8;
 static int ccnt = 8;
 #endif
 
+
+//This is outdated look at cdev.h for new way of doing this TM
 static int major;			/* Major Revision for Char Device, Returned by register_chrdev */
-struct file_operations ebic_fops;	/* File Operations to communicate with userland */
+struct file_operations mighty_fops;	/* File Operations to communicate with userland */
 
 module_param(acnt, int, S_IRUGO);	/* Module Parameters allow you to pass them as arguments during insmod */
 module_param(bcnt, int, S_IRUGO);	/* EX: insmod ./mighty_ebic.ko acnt=4, bcnt=8, ccnt=1 */
 module_param(ccnt, int, S_IRUGO);
+
+
+//Stuff to register char device added TM
+dev_t mighty_dev;
+unsigned int mighty_first_minor = 0;
+unsigned int mighty_count = 1;
+struct cdev cdev;
+struct cdev *mighty_cdev = &cdev;
+
+
+
+
+
 
 /* Begin File Operations for Communication with Userland */
 static int ebic_open(struct inode *inode, struct file *file)
@@ -153,6 +171,41 @@ static long ebic_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 /* End File Operations for Communication with Userland */
+
+static int setup_mighty_dev(void){
+
+
+
+	if (alloc_chrdev_region(&mighty_dev, mighty_first_minor, 1, "mighty_dma") <
+	    0) {
+		printk(KERN_ERR "mighty: unable to find free device numbers\n");
+		return -EIO;
+	}
+
+	cdev_init(mighty_cdev, &mighty_fops);
+
+	if (cdev_add(mighty_cdev, mighty_dev, 1) < 0) {
+		printk(KERN_ERR "broken: unable to add a character device\n");
+		unregister_chrdev_region(mighty_dev, mighty_count);
+		return -EIO;
+	}
+
+	printk(KERN_INFO "Loaded the mighty driver: major = %d, minor = %d\n",
+	       MAJOR(mighty_dev), MINOR(mighty_dev));
+
+	return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
 
 static void callback1(unsigned lch, u16 ch_status, void *data)
 {
@@ -217,17 +270,17 @@ static int __init edma_test_init(void)
 	#endif
 	int modes = 2;
 	int i,j;
+	int registered;
 
 	printk ("\nInitializing edma_test module\n");
 
-	/* Registering Character Device */
-	/* TODO - #DEFINE name of char device */
-	printk("\nRegistering Character Device\n");
-	major = register_chrdev(0, EBIC_DEV_NAME, &ebic_fops);
-		if (major < 0) {
-			printk("Error registering mighty_ebic device\n");
-			goto ebic_fail;
-		}
+	registered = setup_mighty_dev();
+	//major = register_chrdev(MAJOR_NUMBER_MIGHTY, EBIC_DEV_NAME, &ebic_fops);
+	if (registered < 0) {
+		printk("Error registering mighty_ebic device\n");
+		goto ebic_fail;
+	}
+
 	printk("\nmighty_ebic: registered module successfully!\n");
 
 	DMA_PRINTK ( "\nACNT=%d, BCNT=%d, CCNT=%d", acnt, bcnt, ccnt);
@@ -319,7 +372,11 @@ void edma_test_exit(void)
 
 	printk("\nUnregistering Driver\n");
 
-	unregister_chrdev(major, "mighty_ebic");
+	//unregister_chrdev(major, "mighty_ebic");
+
+	cdev_del(mighty_cdev);
+	unregister_chrdev_region(mighty_dev, mighty_count);
+	printk(KERN_INFO "Unloaded the mighty driver!\n");
 
 	printk ("\nExiting edma_test module\n");
 }
@@ -657,7 +714,7 @@ static int stop_ping_pong(int *ch, int *slot1, int *slot2){
 
 
 /* File Operations to Communicate with Userland */
-struct file_operations ebic_fops = {
+struct file_operations mighty_fops = {
 	owner:	 	THIS_MODULE,
 	read:	 	ebic_read,
 	write:	 	ebic_write,

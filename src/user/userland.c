@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
 	printf("%s: entered\n", argv[0]);
 
 	/*Open the device */
-	fd = open("/dev/might_ebic", O_RDWR);
+	fd = open("/dev/mighty_dma", O_RDWR);
 	if (fd == -1) {
 		perror("open failed");
 		rc = fd;
