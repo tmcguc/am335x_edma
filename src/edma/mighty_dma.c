@@ -25,8 +25,7 @@
 #include <linux/sysctl.h>
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
-#include <linux/cdev.h>  // Added by TM
-
+#include <linux/kfifo.h>
 #include <mach/hardware.h>
 #include <mach/irqs.h>
 
@@ -72,6 +71,11 @@
 #define ITCCHEN_SHIFT               23
 #define MAJOR_NUMBER_MIGHTY	    0
 
+
+#define FIFO_SIZE 		    32768 // FIFO size in Bytes must be power of 2
+#define BUF_HEADER		    0x0000
+
+
 static volatile int irqraised1 = 0;
 static volatile int irqraised2 = 0;
 
@@ -92,7 +96,7 @@ unsigned int transfer_counter = 0;
 int ping = 1;
 int ping_counter = 0;
 int pong_counter = 0;
-
+int buf_header = BUF_HEADER;
 
 
 dma_addr_t dmaphyssrc1 = 0;
@@ -100,10 +104,18 @@ dma_addr_t dmaphyssrc2 = 0;
 dma_addr_t dmaphysdest1 = 0;
 dma_addr_t dmaphysdest2 = 0;
 
+dma_addr_t dmaphysping = 0;
+dma_addr_t dmaphyspong = 0;
+
+int cirbuff = 0;
+
 char *dmabufsrc1 = NULL;
 char *dmabufsrc2 = NULL;
 char *dmabufdest1 = NULL;
 char *dmabufdest2 = NULL;
+
+int *dmabufping = NULL;
+int *dmabufpong = NULL;
 
 
 /* EBIC values */
@@ -136,8 +148,8 @@ struct cdev cdev;
 struct cdev *mighty_cdev = &cdev;
 
 
-
-
+//circular buffer for storing data from ping and pong before they can be read by reader
+static DEFINE_KFIFO(test, int, FIFO_SIZE);
 
 
 /* Begin File Operations for Communication with Userland */
@@ -155,9 +167,26 @@ static int ebic_release(struct inode *inode, struct file *file)
 
 static ssize_t ebic_read(struct file *file, char *buf, size_t count, loff_t *ptr)
 {
+
+	int ret;
+	unsigned int copied;
 	DMA_PRINTK("returning zero bytes\n");
-	return 0;
+
+	if (kfifo_len(&test) != 0){
+	
+	ret = kfifo_to_user(&test, buf, count, &copied);
+	}
+
+	return ret;
 }
+
+
+
+
+
+
+
+
 
 static ssize_t ebic_write(struct file *file, const char *buf, size_t count, loff_t * ppos)
 {
@@ -172,6 +201,8 @@ static long ebic_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 }
 /* End File Operations for Communication with Userland */
 
+
+//Register Char Device
 static int setup_mighty_dev(void){
 
 
@@ -226,7 +257,6 @@ static void callback1(unsigned lch, u16 ch_status, void *data)
 
 static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 {
-	//TODO check the status of IPR registers may need to manually reset these!!
 	switch(ch_status) {
 	case DMA_COMPLETE:
 		irqraised1 = 1;
@@ -236,13 +266,41 @@ static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 		if(ping == 1){
 			++ping_counter;
 			DMA_PRINTK ("\nTransfer from Ping: ping_counter is %d transfer_counter is: %d", ping_counter, transfer_counter); 
-			//TODO add in functionality to trnafer to mmap buffer notfiy userland
+
+
+			//functionality to transfer to circular buffer
+			cirbuff =  kfifo_len(&test);
+			printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
+			
+
+			//added in header and counters to buffer
+			kfifo_in(&test, &buf_header, 1); 
+			kfifo_in(&test, &transfer_counter, 1);
+			kfifo_in(&test, &ping_counter, 1);
+
+			// put the data in kfifo
+			kfifo_in(&test, dmabufping, bcnt*ccnt);
+
+			cirbuff =  kfifo_len(&test);
+			printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
+
+
 			ping = 0;
 			break;
 		}
 		else if(ping == 0){
 			++pong_counter;
 			DMA_PRINTK ("\nTransfer from Pong: pong_counter is %d transfer_counter is: %d", pong_counter, transfer_counter);
+
+			kfifo_in(&test, &buf_header, 1); 
+			kfifo_in(&test, &transfer_counter, 1);
+			kfifo_in(&test, &pong_counter, 1);
+			kfifo_in(&test, dmabufpong, bcnt*ccnt);
+
+			cirbuff =  kfifo_len(&test);
+			printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
+
+			
 			ping = 1;
 			break;
 		}	
@@ -255,6 +313,7 @@ static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 	default:
 		break;
 	}
+
 
 }
 
@@ -326,6 +385,25 @@ static int __init edma_test_init(void)
 		return -ENOMEM;
 	}
 
+
+	dmabufping = dma_alloc_coherent (NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysping, 0);
+	DMA_PRINTK( "\nDST1:\t%x", dmaphysping);
+	if (!dmabufping) {
+		DMA_PRINTK("dma_alloc_coherent failed for dmaphysdping\n");
+		//dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufping, dmaphysping);
+		return -ENOMEM;
+	}
+
+	dmabufpong = dma_alloc_coherent (NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphyspong, 0);
+	DMA_PRINTK( "\nDST1:\t%x", dmaphyspong);
+	if (!dmabufpong) {
+		DMA_PRINTK("dma_alloc_coherent failed for dmaphysdest1\n");
+		dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufping, dmaphysping);
+		return -ENOMEM;
+	}
+
+
+
 	/* Test Routine */
 	for (iterations = 0 ; iterations < 5 ; iterations++) {
 		DMA_PRINTK ("Iteration = %d\n", iterations);
@@ -370,9 +448,14 @@ void edma_test_exit(void)
 	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufsrc2, dmaphyssrc2);
 	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufdest2, dmaphysdest2);
 
+
+	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufping, dmaphysping);
+	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufpong, dmaphyspong);
+
+
 	printk("\nUnregistering Driver\n");
 
-	//unregister_chrdev(major, "mighty_ebic");
+	//unregister_chrdev(major, "mighty_ebic"); Old way removed!
 
 	cdev_del(mighty_cdev);
 	unregister_chrdev_region(mighty_dev, mighty_count);
@@ -591,10 +674,10 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 	/* Initalize source and destination buffers */
 	/*grabbing from FIFO no need to initialize with data*/
-	for (count = 0u; count < (acnt*bcnt*ccnt); count++) {
-		dmabufdest1[count] = 0;
+	for (count = 0u; count < (bcnt*ccnt); count++) {
+		dmabufping[count] = 0;
 
-		dmabufdest2[count] = 0;
+		dmabufpong[count] = 0;
 	}
 
 
@@ -649,7 +732,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 
 	edma_set_src (dma_ch1, spi_fifo, FIFO, W32BIT); // need to put in addres of FIFO
-	edma_set_dest (dma_ch1, (unsigned long)(dmaphysdest1), INCR, W32BIT);
+	edma_set_dest (dma_ch1, (unsigned long)(dmaphysping), INCR, W32BIT);
 	edma_set_src_index (dma_ch1, srcbidx, srccidx);
 	edma_set_dest_index (dma_ch1, desbidx, descidx);
 	edma_set_transfer_params (dma_ch1, acnt, bcnt, ccnt, BRCnt, ABSYNC);
@@ -666,7 +749,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 	//Test to see if we can get CCNT to remain the same
 	edma_set_src (dma_slot1, spi_fifo, FIFO, W32BIT); // need to put in addres of FIFO
-	edma_set_dest (dma_slot1, (unsigned long)(dmaphysdest1), INCR, W32BIT);
+	edma_set_dest (dma_slot1, (unsigned long)(dmaphysping), INCR, W32BIT);
 	edma_set_src_index (dma_slot1, srcbidx, srccidx);
 	edma_set_dest_index (dma_slot1, desbidx, descidx);
 	edma_set_transfer_params (dma_slot1, acnt, bcnt, ccnt, BRCnt, ABSYNC);
@@ -677,7 +760,7 @@ int edma3_fifotomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode,
 
 
 	edma_set_src (dma_slot2, spi_fifo, FIFO, W32BIT); // change to same src
-	edma_set_dest (dma_slot2, (unsigned long)(dmaphysdest2), INCR, W32BIT);
+	edma_set_dest (dma_slot2, (unsigned long)(dmaphyspong), INCR, W32BIT);
 	edma_set_src_index (dma_slot2, srcbidx, srccidx);
 	edma_set_dest_index (dma_slot2, desbidx, descidx);
 	edma_set_transfer_params (dma_slot2, acnt, bcnt, ccnt, BRCnt, ABSYNC);
