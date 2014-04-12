@@ -19,7 +19,9 @@ int main(int argc, char **argv) {
 	/* Our File Descriptor */ 
 	int fd;
 	int rc = 0;
-	char *rd_buf[16];
+	char *rd_buf[19];
+	int i = 0;
+	int value = 0;
 
 	printf("%s: entered\n", argv[0]);
 
@@ -34,12 +36,24 @@ int main(int argc, char **argv) {
 	printf("%s: open: successful\n", argv[0]);
 
 	/* Issue a read */
-	rc = read(fd, rd_buf, 0);
+	rc = read(fd, rd_buf, 76);
 	if (rc == -1) {
 		perror("read failed");
 		close(fd);
 		exit(-1);
 	}
+	else{
+		for (i = 0; i < 19; i++) {
+			printf("Rc = %d", rc);
+			value = (int)rd_buf[i];
+			 value = value & 0x3ffff; 
+			printf("printing value from buffer %#010x \n", value);
+		}
+
+	
+	}
+
+
 
 	printf("%s: read: returning %d bytes!\n", argv[0], rc);
 

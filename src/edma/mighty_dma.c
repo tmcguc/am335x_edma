@@ -165,7 +165,7 @@ static int ebic_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ebic_read(struct file *file, char *buf, size_t count, loff_t *ptr)
+static ssize_t ebic_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
 
 	int ret;
@@ -176,12 +176,9 @@ static ssize_t ebic_read(struct file *file, char *buf, size_t count, loff_t *ptr
 	
 	ret = kfifo_to_user(&test, buf, count, &copied);
 	}
-
+	printk("ebic read returned %d", ret);
 	return ret;
 }
-
-
-
 
 
 
@@ -226,14 +223,6 @@ static int setup_mighty_dev(void){
 
 	return 0;
 }
-
-
-
-
-
-
-
-
 
 
 
@@ -291,6 +280,10 @@ static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 		else if(ping == 0){
 			++pong_counter;
 			DMA_PRINTK ("\nTransfer from Pong: pong_counter is %d transfer_counter is: %d", pong_counter, transfer_counter);
+
+
+			cirbuff =  kfifo_len(&test);
+			printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
 
 			kfifo_in(&test, &buf_header, 1); 
 			kfifo_in(&test, &transfer_counter, 1);
