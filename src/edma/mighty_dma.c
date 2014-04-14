@@ -13,6 +13,7 @@
  *   TODO - Have users dynamically set OPT values (we're intending to do it from IOCTL in Userland for our own use) 
  */
 
+
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
@@ -28,9 +29,11 @@
 #include <linux/kfifo.h>
 #include <mach/hardware.h>
 #include <mach/irqs.h>
-
+#include <asm/uaccess.h>
 #include <linux/platform_data/edma.h>
 #include <linux/memory.h>
+
+#include "mighty.h"
 
 //#include <asm/hardware/edma.h>
 //#include <mach/memory.h>
@@ -146,6 +149,7 @@ unsigned int mighty_first_minor = 0;
 unsigned int mighty_count = 1;
 struct cdev cdev;
 struct cdev *mighty_cdev = &cdev;
+struct mighty_bccnt mighty;
 
 
 //circular buffer for storing data from ping and pong before they can be read by reader
@@ -165,7 +169,7 @@ static int ebic_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ebic_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t mighty_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
 
 	int ret;
@@ -191,11 +195,31 @@ static ssize_t ebic_write(struct file *file, const char *buf, size_t count, loff
 	return 0;
 }
 
-static long ebic_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long mighty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
+	void __user *argp = (void __user *)arg;
 	printk("cmd=%d, arg=%ld\n", cmd, arg);
+	//TODO: add test to see if we are actively scanning in which case we return and error
+        switch (cmd) {
+        case MTY_STOP:
+		printk("stoping Mighty DMA");
+		break;
+        case MTY_START:
+		copy_from_user(&mighty, argp, sizeof(mighty));
+        	printk("starting Mighty DMA %d BCNT %d CCNT", mighty.bcnt, mighty.ccnt);
+		break;
+
+	//No need to set ACNT in this version static for now
+
+	default:
+		return -1;
+	}
+
+
 	return 0;
+
 }
+
 /* End File Operations for Communication with Userland */
 
 
@@ -783,7 +807,7 @@ static int stop_ping_pong(int *ch, int *slot1, int *slot2){
 	edma_free_channel(*ch);
 	edma_free_slot(*slot1);
 	edma_free_slot(*slot2);
-	DMA_PRINTK ("Stoped channels and freed them");
+	DMA_PRINTK ("Stoped DMA channels and freed them");
 	return 0;
 }
 
@@ -792,9 +816,9 @@ static int stop_ping_pong(int *ch, int *slot1, int *slot2){
 /* File Operations to Communicate with Userland */
 struct file_operations mighty_fops = {
 	owner:	 	THIS_MODULE,
-	read:	 	ebic_read,
+	read:	 	mighty_read,
 	write:	 	ebic_write,
-	unlocked_ioctl:	ebic_ioctl,
+	unlocked_ioctl:	mighty_ioctl,
 	open:	 	ebic_open,
 	release: 	ebic_release,
 };

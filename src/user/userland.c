@@ -9,11 +9,13 @@
 */
 
 #include <stdio.h>
+#include <assert.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include "/home/mightydev/BBB/rootfs/home/ubuntu/am335x_edma/src/edma/mighty.h"
 
 int main(int argc, char **argv) {
 	/* Our File Descriptor */ 
@@ -22,6 +24,8 @@ int main(int argc, char **argv) {
 	char *rd_buf[19];
 	int i = 0;
 	int value = 0;
+	int ret = 0;
+	struct mighty_bccnt mighty;
 
 	printf("%s: entered\n", argv[0]);
 
@@ -35,9 +39,21 @@ int main(int argc, char **argv) {
 
 	printf("%s: open: successful\n", argv[0]);
 
+
+	mighty.bcnt = 8;
+	mighty.ccnt = 2;
+
+	ret = ioctl(fd, MTY_START, &mighty);
+
+	assert(ret == 0);
+
+
+
+
+
 	/* Issue a read */
 	rc = read(fd, rd_buf, 76);
-	if (rc == -1) {
+	if (rc < 0) {
 		perror("read failed");
 		close(fd);
 		exit(-1);
