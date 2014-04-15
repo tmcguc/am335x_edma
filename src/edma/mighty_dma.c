@@ -50,11 +50,7 @@
 /* TODO - Look at TMC changes in ABsync branch to understand A/AB TM diff */
 
 /* How many bytes do you wish to transfer, in total? */
-#ifdef EBIC
 #define MAX_DMA_TRANSFER_IN_BYTES   (32768)	/* Don't need two of these defines in the future */
-#else
-#define MAX_DMA_TRANSFER_IN_BYTES   (32768)     /* Original TI EDMA Sample Values */
-#endif
 
 /* useful defines for debug output */
 #ifdef EDMA3_DEBUG
@@ -75,7 +71,7 @@
 #define MAJOR_NUMBER_MIGHTY	    0
 
 
-#define FIFO_SIZE 		    32768 // FIFO size in Bytes must be power of 2
+#define FIFO_SIZE 		    32768 // FIFO size in Bytes must be power of 2, TODO: This is for KFIFO should probably make this bigger
 #define BUF_HEADER		    0x0000
 
 
@@ -94,6 +90,8 @@ int *ch_ptr = &ch;
 int *slot1_ptr = &slot1;
 int *slot2_ptr = &slot2;
 
+int scanning = 0;
+
 /*Transfer counter*/
 unsigned int transfer_counter = 0;
 int ping = 1;
@@ -110,6 +108,8 @@ dma_addr_t dmaphysdest2 = 0;
 dma_addr_t dmaphysping = 0;
 dma_addr_t dmaphyspong = 0;
 
+
+
 int cirbuff = 0;
 
 char *dmabufsrc1 = NULL;
@@ -122,16 +122,9 @@ int *dmabufpong = NULL;
 
 
 /* EBIC values */
-#ifdef EBIC
 static int acnt = 4;		/* FIFO width (32-bit) */
 static int bcnt = 8;		/* FIFO depth */
 static int ccnt = 2;
-#else
-/* original values */
-static int acnt = 512;
-static int bcnt = 8;
-static int ccnt = 8;
-#endif
 
 
 //This is outdated look at cdev.h for new way of doing this TM
@@ -163,50 +156,79 @@ static int ebic_open(struct inode *inode, struct file *file)
 		return 0;
 }
 
+
+//TODO should figure out what is needed here??
 static int ebic_release(struct inode *inode, struct file *file)
 {
 	DMA_PRINTK("successful\n");
 	return 0;
 }
 
+
 static ssize_t mighty_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
 
-	int ret;
+	/*Returns number requested otherwise sends back the amount of data that is in the fifo
+	 *
+	 * */
+	int ret ;
 	unsigned int copied;
-	DMA_PRINTK("returning zero bytes\n");
-
-	if (kfifo_len(&test) != 0){
-	
-	ret = kfifo_to_user(&test, buf, count, &copied);
+	unsigned int length;
+	//divide by 4 is neccassry to get the right number of ints in the array
+	if (kfifo_len(&test) >= count/4 ){
+		ret = kfifo_to_user(&test, buf, count, &copied);
 	}
+	else if(kfifo_len(&test) > 0 ){
+		length = kfifo_len(&test)*4; // need to convert to number of chars in fifo
+		ret = kfifo_to_user(&test, buf, length, &copied);
+	}
+	else
+		ret = -1;
 	printk("ebic read returned %d", ret);
-	return ret;
+	return ret ? ret : copied;
 }
 
 
 
 
 
-
+//TODO don't really need this should probably get rid of it
 static ssize_t ebic_write(struct file *file, const char *buf, size_t count, loff_t * ppos)
 {
 	DMA_PRINTK("accepting zero bytes\n");
 	return 0;
 }
 
+
+
+
 static long mighty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
+	int result = 0;
+	int ret = 0;
 	void __user *argp = (void __user *)arg;
 	printk("cmd=%d, arg=%ld\n", cmd, arg);
+
 	//TODO: add test to see if we are actively scanning in which case we return and error
         switch (cmd) {
         case MTY_STOP:
 		printk("stoping Mighty DMA");
+		stop_ping_pong (&ch, &slot1, &slot2);
+		scanning = 0;
 		break;
+
         case MTY_START:
-		copy_from_user(&mighty, argp, sizeof(mighty));
-        	printk("starting Mighty DMA %d BCNT %d CCNT", mighty.bcnt, mighty.ccnt);
+		//Make sure we stop channel first before we allocate otherwise may fail
+		stop_ping_pong (&ch, &slot1, &slot2);
+		ret = copy_from_user(&mighty, argp, sizeof(mighty));
+        	printk("Starting Mighty DMA %d BCNT %d CCNT", mighty.bcnt, mighty.ccnt);
+		acnt = 4;
+		bcnt = mighty.bcnt;
+		ccnt = mighty.ccnt;
+		result = edma3_fifotomemcpytest_dma_link(acnt,bcnt,ccnt,1,1);
+		scanning = 1;
+
+
 		break;
 
 	//No need to set ACNT in this version static for now
@@ -339,11 +361,7 @@ static int __init edma_test_init(void)
 {
 	int result = 0;
 	int iterations = 0;
-	#ifdef EBIC
 	int numTCs = 2;
-	#else	
-	int numTCs = 4;
-	#endif
 	int modes = 2;
 	int i,j;
 	int registered;
@@ -445,7 +463,7 @@ static int __init edma_test_init(void)
 		}
 	}
 	
-	result = edma3_fifotomemcpytest_dma_link(acnt,bcnt,ccnt,1,1);
+	//result = edma3_fifotomemcpytest_dma_link(acnt,bcnt,ccnt,1,1);
 	//result = stop_ping_pong(&ch, &slot);	
 
 	return result;
@@ -457,7 +475,7 @@ ebic_fail:
 
 void edma_test_exit(void)
 {
-	stop_ping_pong (&ch, &slot1, &slot2);
+	stop_ping_pong (&ch, &slot1, &slot2); //this is now in ioctl command here to make sure it is stopped properly
 
 	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufsrc1, dmaphyssrc1);
 	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, dmabufdest1, dmaphysdest1);
@@ -515,9 +533,6 @@ int edma3_memtomemcpytest_dma_link(int acnt, int bcnt, int ccnt, int sync_mode, 
 	srcbidx = acnt;
 	desbidx = acnt;
 
-	/* A Sync Transfer Mode */
-	//srccidx = acnt;
-	//descidx = acnt;
 
 	/* AB Sync Transfer Mode */
 	srccidx = bcnt * acnt;
