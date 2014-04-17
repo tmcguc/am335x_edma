@@ -175,11 +175,11 @@ static ssize_t mighty_read(struct file *file, char __user *buf, size_t count, lo
 	unsigned int copied;
 	unsigned int length;
 	//divide by 4 is neccassry to get the right number of ints in the array
-	if (kfifo_len(&test) >= count/4 ){
+	if (kfifo_len(&test) >= (count >> 2) ){
 		ret = kfifo_to_user(&test, buf, count, &copied);
 	}
 	else if(kfifo_len(&test) > 0 ){
-		length = kfifo_len(&test)*4; // need to convert to number of chars in fifo
+		length = kfifo_len(&test) << 2; // need to convert to number of chars in fifo
 		ret = kfifo_to_user(&test, buf, length, &copied);
 	}
 	else
