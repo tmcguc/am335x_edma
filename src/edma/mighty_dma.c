@@ -71,8 +71,10 @@
 #define MAJOR_NUMBER_MIGHTY	    0
 
 
-#define FIFO_SIZE 		    32768 // FIFO size in Bytes must be power of 2, TODO: This is for KFIFO should probably make this bigger
-#define BUF_HEADER		    0x0000
+#define FIFO_SIZE 		    0x100000 // FIFO size in Bytes must be power of 2, 
+#define BUF_HEADER		    0xffffffff
+#define BUF_HEADER_TAIL		    0x00ffffff
+
 
 
 static volatile int irqraised1 = 0;
@@ -98,6 +100,7 @@ int ping = 1;
 int ping_counter = 0;
 int pong_counter = 0;
 int buf_header = BUF_HEADER;
+int buf_header_tail = BUF_HEADER_TAIL;
 
 
 dma_addr_t dmaphyssrc1 = 0;
@@ -184,7 +187,7 @@ static ssize_t mighty_read(struct file *file, char __user *buf, size_t count, lo
 	}
 	else
 		ret = -1;
-	printk("ebic read returned %d", ret);
+	//printk("ebic read returned %d", ret);
 	return ret ? ret : copied;
 }
 
@@ -228,6 +231,10 @@ static long mighty_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		result = edma3_fifotomemcpytest_dma_link(acnt,bcnt,ccnt,1,1);
 		scanning = 1;
 
+		//Reset transfer counters
+		transfer_counter = 0;
+		ping_counter = 0;
+		pong_counter = 0;
 
 		break;
 
@@ -295,29 +302,30 @@ static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 	switch(ch_status) {
 	case DMA_COMPLETE:
 		irqraised1 = 1;
-		DMA_PRINTK ("\n From Callback PingPong: Channel %d status is: %u\n",lch, ch_status); 
+		//DMA_PRINTK ("\n From Callback PingPong: Channel %d status is: %u\n",lch, ch_status); 
 		// TODO use callabck put data into proper buffer, incrment a counter etc...
 		++transfer_counter;
 		if(ping == 1){
 			++ping_counter;
-			DMA_PRINTK ("\nTransfer from Ping: ping_counter is %d transfer_counter is: %d", ping_counter, transfer_counter); 
+			//DMA_PRINTK ("\nTransfer from Ping: ping_counter is %d transfer_counter is: %d", ping_counter, transfer_counter); 
 
 
 			//functionality to transfer to circular buffer
 			cirbuff =  kfifo_len(&test);
-			printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
+			//printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
 			
 
 			//added in header and counters to buffer
 			kfifo_in(&test, &buf_header, 1); 
 			kfifo_in(&test, &transfer_counter, 1);
 			kfifo_in(&test, &ping_counter, 1);
+			kfifo_in(&test, &buf_header_tail, 1); 
 
 			// put the data in kfifo
 			kfifo_in(&test, dmabufping, bcnt*ccnt);
 
 			cirbuff =  kfifo_len(&test);
-			printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
+			//printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
 
 
 			ping = 0;
@@ -325,19 +333,43 @@ static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 		}
 		else if(ping == 0){
 			++pong_counter;
-			DMA_PRINTK ("\nTransfer from Pong: pong_counter is %d transfer_counter is: %d", pong_counter, transfer_counter);
+			//DMA_PRINTK ("\nTransfer from Pong: pong_counter is %d transfer_counter is: %d", pong_counter, transfer_counter);
 
 
 			cirbuff =  kfifo_len(&test);
-			printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
+			//printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
 
 			kfifo_in(&test, &buf_header, 1); 
 			kfifo_in(&test, &transfer_counter, 1);
 			kfifo_in(&test, &pong_counter, 1);
+			kfifo_in(&test, &buf_header_tail, 1); 
+
+			// put the data in kfifo
+			kfifo_in(&test, dmabufping, bcnt*ccnt);
+
+			cirbuff =  kfifo_len(&test);
+			//printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
+
+
+			ping = 0;
+			break;
+		}
+		else if(ping == 0){
+			++pong_counter;
+			//DMA_PRINTK ("\nTransfer from Pong: pong_counter is %d transfer_counter is: %d", pong_counter, transfer_counter);
+
+
+			cirbuff =  kfifo_len(&test);
+			//printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
+
+			kfifo_in(&test, &buf_header, 1); 
+			kfifo_in(&test, &transfer_counter, 1);
+			kfifo_in(&test, &pong_counter, 1);
+			//put data in kfifo
 			kfifo_in(&test, dmabufpong, bcnt*ccnt);
 
 			cirbuff =  kfifo_len(&test);
-			printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
+			//printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
 
 			
 			ping = 1;

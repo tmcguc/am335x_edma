@@ -11,3 +11,5 @@ struct  mighty_bccnt{
 	unsigned int bcnt;
 	unsigned int ccnt;
 };
+
+//TODO:add tags to differnetiatae scans based on header in buff
