@@ -351,30 +351,9 @@ static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 			//printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
 
 
-			ping = 0;
-			break;
-		}
-		else if(ping == 0){
-			++pong_counter;
-			//DMA_PRINTK ("\nTransfer from Pong: pong_counter is %d transfer_counter is: %d", pong_counter, transfer_counter);
-
-
-			cirbuff =  kfifo_len(&test);
-			//printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
-
-			kfifo_in(&test, &buf_header, 1); 
-			kfifo_in(&test, &transfer_counter, 1);
-			kfifo_in(&test, &pong_counter, 1);
-			//put data in kfifo
-			kfifo_in(&test, dmabufpong, bcnt*ccnt);
-
-			cirbuff =  kfifo_len(&test);
-			//printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
-
-			
 			ping = 1;
 			break;
-		}	
+		}
 		else	
 			break;										
 	case DMA_CC_ERROR:
