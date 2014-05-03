@@ -104,23 +104,23 @@ int main(int argc, char **argv) {
 			//perror("read failed");
 			//close(fd);//will need to take this out in final version
 			//exit(-1); // take out this too
-			usleep(10);
+			usleep(1000);
 		}
 		else{
-			rd = rc/4;
-			for (k = 0; k < rd ; k++) {
+			//rd = rc/4;
+			//for (k = 0; k < rd ; k++) {
 				//printf("Rc = %d", rc);
-				value = (int)rd_buf[k];
-			 	value = value & 0x3ffff; 
-				printf("printing value from buffer %#010x \n", value);
-			}
-
+				//value = (int)rd_buf[k];
+			 	//value = value & 0x3ffff; 
+				//printf("printing value from buffer %#010x \n", value);
+			//}
+			//printf("rc = %d",rc);
 			//Send Data out over socket
 			//sendto(s, buf, rc, 0, &si_other, slen);
 			if (sendto(s, rd_buf, BUFLEN, 0,(struct sockaddr *) &si_other, slen)==-1)
             		diep("sendto()");
 			//sendto(s, rd_buf, rc, 0,(struct sockaddr *) &si_other, slen);
-			usleep(10);
+			//usleep(100);
 
 		}
 	}
