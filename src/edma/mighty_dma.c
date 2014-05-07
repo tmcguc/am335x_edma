@@ -345,7 +345,7 @@ static void callback_pingpong(unsigned lch, u16 ch_status, void *data)
 			kfifo_in(&test, &buf_header_tail, 1); 
 
 			// put the data in kfifo
-			kfifo_in(&test, dmabufping, bcnt*ccnt);
+			kfifo_in(&test, dmabufpong, bcnt*ccnt);
 
 			cirbuff =  kfifo_len(&test);
 			//printk("\n mighty_dma cirbuff len is %d \n", cirbuff);
